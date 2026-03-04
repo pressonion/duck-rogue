@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DUCK ROGUE: THE KITCHEN</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        :root {
+            --bg: #1a1c2c; --wall-dark: #2f484e; --wall-light: #44891a; --wall-detail: #a3ce27;
+            --accent: #be4a2f; --gold: #d77bba; --text: #ffffff;
+            --enemy-ramen-base: #ffdd88; --enemy-ramen-detail: #eeaa55; --enemy-ramen-eyes: #000;
+        }
+
+        body {
+            margin: 0; background: #050505; color: var(--text); font-family: 'Press Start 2P', monospace;
+            display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; user-select: none;
+        }
+
+        #game-wrapper {
+            position: relative; width: 800px; height: 600px; background: var(--bg);
+            border: 4px solid #577277; box-shadow: 0 0 40px rgba(0,0,0,0.8); image-rendering: pixelated; overflow: hidden;
+        }
+
+        #scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 6px 100%; pointer-events: none; z-index: 99; opacity: 1; transition: opacity 0.3s;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; }
+        .hud { position: absolute; top: 20px; left: 20px; display: flex; gap: 20px; font-size: 14px; color: #fff; text-shadow: 2px 2px 0 #000; z-index: 10; }
+        
+        .btn {
+            background: #2f484e; border: 4px solid #1a1c2c; border-top-color: #577277; border-left-color: #577277;
+            color: #fff; padding: 12px; font-family: inherit; font-size: 12px; cursor: pointer; text-transform: uppercase; text-align: center; box-shadow: 4px 4px 0 #000;
+        }
+        .btn:hover { background: #44891a; transform: translateY(-2px); }
+
+        .screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(26, 28, 44, 0.95);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; pointer-events: auto;
+        }
+        .hidden { display: none !important; }
+
+        h1 { font-size: 40px; color: #a3ce27; text-shadow: 4px 4px 0 #2f484e, 6px 6px 0 #000; margin-bottom: 20px; text-align: center; line-height: 1.5; }
+        h2 { color: #fff; margin-bottom: 30px; }
+
+        .setting-row { display: flex; gap: 20px; align-items: center; margin-bottom: 20px; width: 350px; justify-content: space-between;}
+        input[type=text] { background: #111; border: 2px solid #577277; color: #a3ce27; padding: 10px; font-family: inherit; text-align: center; margin-bottom: 10px; font-size: 16px; outline: none; width: 200px;}
+        
+        .level-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; background: #111; padding: 20px; border: 4px solid #577277; }
+        .lvl-btn { width: 50px; height: 50px; background: #2f484e; border: 2px solid #577277; color: #fff; display: flex; justify-content: center; align-items: center; cursor: pointer; font-size: 14px; }
+        .lvl-btn:hover { background: #44891a; border-color: #a3ce27; }
+        .lvl-btn.locked { opacity: 0.4; pointer-events: none; background: #111; border-color: #333; }
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="scanlines"></div>
+    
+    <div id="game-ui" class="ui-layer hidden">
+        <div class="hud">
+            <div>💎 <span id="gem-count">0</span></div>
+            <div>FLOOR <span id="lvl-display">1</span></div>
+        </div>
+        <button class="btn" style="position:absolute; top:20px; right:20px; pointer-events:auto;" onclick="goToMenu()">MENU</button>
+    </div>
+
+    <div id="menu-screen" class="screen">
+        <h1>ROGUE DUCK<br><span style="font-size: 20px; color:#fff;">THE KITCHEN</span></h1>
+        <div style="display: flex; flex-direction: column; gap: 15px; width: 250px;">
+            <button class="btn" style="padding: 20px; font-size: 16px;" onclick="goToLevelSelect()">ENTER DUNGEON</button>
+            <button class="btn" onclick="goToSettings()">SETTINGS & SECRETS</button>
+            <button class="btn" onclick="goToCredits()">CREDITS</button>
+        </div>
+    </div>
+
+    <div id="settings-screen" class="screen hidden">
+        <h2>SETTINGS</h2>
+        <div class="setting-row">
+            <label>RETRO SCANLINES</label>
+            <button id="scan-btn" class="btn" style="width: 100px; color:#a3ce27;" onclick="toggleSetting('scanlines')">ON</button>
+        </div>
+        <div class="setting-row">
+            <label>PARTICLES</label>
+            <button id="part-btn" class="btn" style="width: 100px; color:#a3ce27;" onclick="toggleSetting('particles')">ON</button>
+        </div>
+        <div style="display:flex; flex-direction: column; align-items: center; margin-top: 20px;">
+            <label style="margin-bottom:10px;">ENTER CHEAT CODE:</label>
+            <input type="text" id="dev-code" placeholder="ENTER CODE" autocomplete="off">
+            <button class="btn" style="width: 225px;" onclick="checkCode()">SUBMIT</button>
+            <p id="code-msg" style="color:#a3ce27; margin-top: 10px; height: 20px; font-size: 10px;"></p>
+        </div>
+        <button class="btn" style="margin-top: 30px; width: 150px;" onclick="goToMenu()">BACK</button>
+    </div>
+
+    <div id="credits-screen" class="screen hidden">
+        <h2>CREDITS</h2>
+        <p style="font-size: 16px; margin-bottom: 20px; color: #a3ce27;">GAME DESIGN & DEVELOPMENT:</p>
+        <p style="font-size: 24px; color: #fff;">Kurtis Chu</p>
+        <button class="btn" style="margin-top: 40px; width: 150px;" onclick="goToMenu()">BACK</button>
+    </div>
+
+    <div id="level-screen" class="screen hidden">
+        <h2>SELECT FLOOR</h2>
+        <div class="level-grid" id="level-grid"></div>
+        <button class="btn" style="margin-top: 30px; width: 150px;" onclick="goToMenu()">BACK</button>
+    </div>
+
+    <div id="win-screen" class="screen hidden">
+        <h1 style="color: var(--gold); font-size: 24px;">FLOOR CLEARED!</h1>
+        <div style="display: flex; gap: 20px;">
+            <button class="btn" onclick="goToLevelSelect()">MAP</button>
+            <button class="btn" onclick="nextLevel()">NEXT FLOOR</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let state = 'MENU';
+    let currentLevel = 0, gems = 0, unlockedLevels = 1;
+    let scanlinesOn = true, particlesOn = true;
+    
+    const keys = { up: false, left: false, right: false, space: false };
+    const player = { x: 0, y: 0, w: 24, h: 24, vx: 0, vy: 0, grounded: false, jumps: 0, facing: 1, dashTimer: 0 };
+
+    let platforms = [], water = [], enemies = [], collectibles = [], exit = {x:0,y:0,w:40,h:50}, particles = [];
+    let handObj = {x:0, y:-600, active:false, timer:0, state: 'waiting'};
+    let beamKnife = {x: 800, y: 300, w: 120, h: 20, vx: -7, active: false};
+
+    // 18 COMPLETELY UNIQUE HAND-CRAFTED LAYOUTS FOR FLOORS 2-19
+    const uniqueLayouts = [
+        { p: [{x:100,y:450,w:80}, {x:350,y:350,w:80}, {x:600,y:250,w:80}], e: [] }, // Lvl 2: Basic stairs
+        { p: [{x:150,y:350,w:500}], e: [{pIdx: 0}] }, // Lvl 3: The Long Bridge
+        { p: [{x:50,y:250,w:100}, {x:350,y:450,w:100}, {x:650,y:250,w:100}], e: [] }, // Lvl 4: The V Shape
+        { p: [{x:200,y:480,w:60}, {x:400,y:380,w:60}, {x:200,y:280,w:60}, {x:400,y:180,w:60}], e: [] }, // Lvl 5: The Zig Zag Climb
+        { p: [{x:350,y:450,w:100}, {x:200,y:300,w:100}, {x:500,y:300,w:100}, {x:350,y:150,w:100}], e: [{pIdx: 1}, {pIdx: 2}] }, // Lvl 6: The Diamond
+        { p: [{x:80,y:500,w:150}, {x:550,y:500,w:150}, {x:320,y:350,w:160}], e: [{pIdx: 2}] }, // Lvl 7: Pyramid Base
+        { p: [{x:100,y:400,w:200}, {x:500,y:400,w:200}, {x:350,y:200,w:100}], e: [{pIdx: 0}, {pIdx: 1}] }, // Lvl 8: Twin Pillars
+        { p: [{x:50,y:300,w:80}, {x:250,y:200,w:80}, {x:450,y:400,w:80}, {x:650,y:300,w:80}], e: [] }, // Lvl 9: Wavy Islands
+        { p: [{x:150,y:450,w:500}, {x:150,y:250,w:500}], e: [{pIdx: 0}, {pIdx: 1}] }, // Lvl 10: Double Deck Bridge
+        { p: [{x:350,y:500,w:100}, {x:350,y:350,w:100}, {x:350,y:200,w:100}], e: [] }, // Lvl 11: The Elevator Shaft
+        { p: [{x:100,y:250,w:150}, {x:350,y:450,w:100}, {x:550,y:250,w:150}], e: [{pIdx: 0}, {pIdx: 2}] }, // Lvl 12: High-Low-High
+        { p: [{x:200,y:480,w:50}, {x:350,y:380,w:50}, {x:500,y:280,w:50}, {x:650,y:180,w:50}], e: [] }, // Lvl 13: Tiny Steps
+        { p: [{x:50,y:450,w:150}, {x:600,y:450,w:150}, {x:250,y:300,w:300}], e: [{pIdx: 2}] }, // Lvl 14: Center Stage
+        { p: [{x:300,y:480,w:200}, {x:100,y:330,w:100}, {x:600,y:330,w:100}, {x:300,y:180,w:200}], e: [{pIdx: 0}, {pIdx: 3}] }, // Lvl 15: Boxed In
+        { p: [{x:150,y:400,w:80}, {x:300,y:250,w:80}, {x:450,y:400,w:80}, {x:600,y:250,w:80}], e: [] }, // Lvl 16: Up and Down
+        { p: [{x:100,y:300,w:600}], e: [{pIdx: 0}, {pIdx: 0}] }, // Lvl 17: Long Gauntlet (2 enemies)
+        { p: [{x:100,y:500,w:100}, {x:600,y:500,w:100}, {x:100,y:200,w:100}, {x:600,y:200,w:100}, {x:350,y:350,w:100}], e: [{pIdx: 4}] }, // Lvl 18: Four Corners
+        { p: [{x:250,y:450,w:50}, {x:500,y:350,w:50}, {x:250,y:250,w:50}, {x:500,y:150,w:50}], e: [] }, // Lvl 19: Precision Platforming
+    ];
+
+    const levels = [];
+    for(let i=0; i<20; i++) {
+        let lvl = {
+            spawn: {x: 50, y: 400},
+            plats: [ {x:0, y:580, w:800, h:20}, {x:0, y:0, w:20, h:600}, {x:780, y:0, w:20, h:600} ], // borders
+            water: [], enemies: [], gems: [], hasHand: false, hasBoss: false, exit: {x: 700, y: 100}
+        };
+
+        if(i === 0) {
+            // Lvl 1: Tutorial
+            lvl.plats.push({x:200, y:500, w:150, h:20}, {x:450, y:400, w:150, h:20});
+            lvl.gems = [{x:260, y:450}, {x:510, y:350}]; lvl.exit = {x: 650, y: 530};
+        } 
+        else if (i === 19) {
+            // Lvl 20: BOSS
+            lvl.plats.push({x:100, y:450, w:100, h:20}, {x:350, y:350, w:100, h:20}, {x:600, y:450, w:100, h:20}, {x:220, y:200, w:100, h:20}, {x:480, y:200, w:100, h:20});
+            lvl.water = [{x:20, y:530, w:760, h:70}]; 
+            lvl.enemies = [
+                {x:350, y:326, w:24, h:24, vx: 2, minX: 350, maxX: 450}, {x:220, y:176, w:24, h:24, vx: -1.5, minX: 220, maxX: 320}, {x:480, y:176, w:24, h:24, vx: 1.5, minX: 480, maxX: 580}
+            ];
+            lvl.gems = [{x:140, y:400}, {x:640, y:400}, {x:390, y:300}, {x:260, y:150}, {x:520, y:150}];
+            lvl.exit = {x: 380, y: 70}; lvl.hasHand = true; lvl.hasBoss = true;
+        } 
+        else {
+            // Lvls 2-19: Pull from the completely unique hand-crafted list
+            let layout = uniqueLayouts[i - 1]; 
+            
+            // Add Platforms
+            layout.p.forEach(p => { lvl.plats.push({x: p.x, y: p.y, w: p.w, h: 20}); });
+            
+            // Generate 2 Gems based on the first and last platforms
+            let p1 = layout.p[0]; let pLast = layout.p[layout.p.length-1];
+            lvl.gems.push({x: p1.x + p1.w/2 - 10, y: p1.y - 40});
+            lvl.gems.push({x: pLast.x + pLast.w/2 - 10, y: pLast.y - 40});
+            
+            // Put Exit on the highest platform
+            let highestP = layout.p.reduce((min, p) => p.y < min.y ? p : min, layout.p[0]);
+            lvl.exit = {x: highestP.x + highestP.w/2 - 20, y: highestP.y - 50};
+
+            // Grounded Enemies (Locked perfectly to their platforms)
+            if(i >= 3) {
+                layout.e.forEach(eData => {
+                    let targetP = layout.p[eData.pIdx];
+                    lvl.enemies.push({x: targetP.x + 10, y: targetP.y - 24, w: 24, h: 24, vx: 2, minX: targetP.x, maxX: targetP.x + targetP.w});
+                });
+            }
+
+            // Hazard Stacking
+            if(i >= 7) lvl.water.push({x:20, y:550, w:760, h:50}); 
+            if(i >= 13) lvl.hasHand = true;
+        }
+        levels.push(lvl);
+    }
+
+    // Settings logic
+    function toggleSetting(type) {
+        if(type === 'scanlines') {
+            scanlinesOn = !scanlinesOn;
+            document.getElementById('scanlines').style.opacity = scanlinesOn ? '1' : '0';
+            document.getElementById('scan-btn').innerText = scanlinesOn ? 'ON' : 'OFF';
+            document.getElementById('scan-btn').style.color = scanlinesOn ? '#a3ce27' : '#fff';
+        } else if (type === 'particles') {
+            particlesOn = !particlesOn;
+            document.getElementById('part-btn').innerText = particlesOn ? 'ON' : 'OFF';
+            document.getElementById('part-btn').style.color = particlesOn ? '#a3ce27' : '#fff';
+        }
+    }
+
+    function checkCode() {
+        const input = document.getElementById('dev-code').value.toLowerCase().trim();
+        const msg = document.getElementById('code-msg');
+        if(input === 'devduck') {
+            unlockedLevels = 20; msg.innerText = "CHEAT ACTIVATED: ALL FLOORS UNLOCKED!"; msg.style.color = "#a3ce27";
+            setTimeout(() => { document.getElementById('dev-code').value = ''; msg.innerText = ''; goToLevelSelect(); }, 1500);
+        } else {
+            msg.innerText = "INVALID CODE."; msg.style.color = "#be4a2f";
+            setTimeout(() => { msg.innerText = ''; }, 2000);
+        }
+    }
+
+    window.addEventListener('keydown', e => {
+        if(['ArrowUp', 'KeyW'].includes(e.code)) { 
+            if(!keys.up && (player.grounded || player.jumps < 2)) { 
+                player.vy = -12; player.jumps++; player.grounded = false; 
+                spawnParticles(player.x+10, player.y+24, '#fff', 5);
+            } 
+            keys.up = true; 
+        }
+        if(['ArrowLeft', 'KeyA'].includes(e.code)) keys.left = true;
+        if(['ArrowRight', 'KeyD'].includes(e.code)) keys.right = true;
+        if(e.code === 'Space' && player.dashTimer <= 0) { 
+            player.vx = player.facing * 15; player.dashTimer = 10; player.vy = -2;
+            spawnParticles(player.x+12, player.y+12, '#fff', 10);
+        }
+    });
+    window.addEventListener('keyup', e => {
+        if(['ArrowUp', 'KeyW'].includes(e.code)) keys.up = false;
+        if(['ArrowLeft', 'KeyA'].includes(e.code)) keys.left = false;
+        if(['ArrowRight', 'KeyD'].includes(e.code)) keys.right = false;
+    });
+
+    function die() {
+        spawnParticles(player.x+12, player.y+12, '#be4a2f', 30); 
+        startLevel(currentLevel);
+    }
+
+    function startLevel(idx) {
+        currentLevel = idx; const d = levels[idx];
+        
+        platforms = d.plats.map(p => ({...p})); water = d.water.map(w => ({...w})); 
+        enemies = d.enemies.map(e => ({...e})); collectibles = d.gems.map(g => ({...g, collected: false})); 
+        exit = {...d.exit, w:40, h:50}; particles = [];
+        
+        player.x = d.spawn.x; player.y = d.spawn.y; player.vx = 0; player.vy = 0; player.jumps = 0; player.dashTimer = 0;
+
+        handObj = {x:0, y:-600, active: d.hasHand, timer: 0, state: 'waiting'};
+        beamKnife = {x: 800, y: 250, w: 250, h: 16, vx: -9, active: d.hasBoss};
+
+        state = 'PLAY'; 
+        document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+        document.getElementById('game-ui').classList.remove('hidden');
+        document.getElementById('lvl-display').innerText = idx + 1;
+    }
+
+    function update() {
+        if(state !== 'PLAY') return;
+
+        if(player.dashTimer > 0) player.dashTimer--;
+        else {
+            if(keys.left) { player.vx = -5; player.facing = -1; }
+            else if(keys.right) { player.vx = 5; player.facing = 1; }
+            else player.vx *= 0.8;
+            player.vy += 0.6;
+        }
+
+        player.x += player.vx; resolveCollisions('x');
+        player.y += player.vy; resolveCollisions('y');
+
+        if(player.y > 600) die();
+
+        water.forEach(w => { if(rectIntersect(player.x, player.y, player.w, player.h, w.x, w.y+10, w.w, w.h-10)) die(); });
+
+        enemies.forEach(e => {
+            e.x += e.vx; if(e.x < e.minX || e.x > e.maxX - e.w) e.vx *= -1;
+            if(rectIntersect(player.x, player.y, player.w, player.h, e.x+2, e.y+2, e.w-4, e.h-4)) die();
+        });
+
+        collectibles.forEach(g => { 
+            if(!g.collected && rectIntersect(player.x, player.y, player.w, player.h, g.x, g.y, 20, 20)) { 
+                g.collected = true; gems++; document.getElementById('gem-count').innerText = gems; 
+                spawnParticles(g.x+10, g.y+10, '#d77bba', 12);
+            }
+        });
+
+        if(collectibles.every(g => g.collected) && rectIntersect(player.x, player.y, player.w, player.h, exit.x, exit.y, exit.w, exit.h)) {
+            state = 'WIN'; if(currentLevel + 1 >= unlockedLevels) unlockedLevels++;
+            document.getElementById('win-screen').classList.remove('hidden');
+        }
+
+        if(handObj.active) {
+            if(handObj.state === 'waiting') {
+                handObj.timer++;
+                if(handObj.timer > 120) { handObj.x = player.x - 20; handObj.state = 'warning'; handObj.timer = 0; }
+            } else if (handObj.state === 'warning') {
+                handObj.timer++; if(handObj.timer > 40) { handObj.state = 'smash'; handObj.y = 0; handObj.timer = 0; spawnParticles(handObj.x+30, 580, '#fff', 20);}
+            } else if (handObj.state === 'smash') {
+                handObj.timer++;
+                if(rectIntersect(player.x, player.y, player.w, player.h, handObj.x+10, handObj.y, 60, 600)) die();
+                if(handObj.timer > 30) { handObj.state = 'waiting'; handObj.y = -600; handObj.timer = 0; }
+            }
+        }
+
+        if(beamKnife.active) {
+            beamKnife.x += beamKnife.vx;
+            if(beamKnife.x < -300 || beamKnife.x > 1000) { 
+                beamKnife.vx *= -1; beamKnife.y = Math.random() * 350 + 100; 
+            }
+            if(rectIntersect(player.x, player.y, player.w, player.h, beamKnife.x, beamKnife.y, beamKnife.w, beamKnife.h)) die();
+        }
+
+        updateParticles();
+    }
+
+    function resolveCollisions(axis) {
+        if(axis === 'y') player.grounded = false;
+        platforms.forEach(p => {
+            if(rectIntersect(player.x, player.y, player.w, player.h, p.x, p.y, p.w, p.h)) {
+                if(axis === 'x') { player.x = player.vx > 0 ? p.x - player.w : p.x + p.w; player.vx = 0; } 
+                else { 
+                    if(player.vy > 0) { player.y = p.y - player.h; player.grounded = true; player.jumps = 0; }
+                    else { player.y = p.y + p.h; }
+                    player.vy = 0;
+                }
+            }
+        });
+    }
+
+    function rectIntersect(x1,y1,w1,h1,x2,y2,w2,h2) { return x2 < x1 + w1 && x2 + w2 > x1 && y2 < y1 + h1 && y2 + h2 > y1; }
+
+    function drawDuck(x, y, dir) {
+        ctx.save();
+        if(dir === -1) { ctx.translate(x + 24, y); ctx.scale(-1, 1); x = 0; y = 0; } else { ctx.translate(x, y); x = 0; y = 0; }
+        ctx.fillStyle = '#fff'; ctx.fillRect(x+4, y+8, 16, 12); ctx.fillRect(x+6, y, 12, 10);
+        ctx.fillStyle = '#be4a2f'; ctx.fillRect(x+6, y+2, 12, 4); 
+        ctx.fillStyle = '#000'; ctx.fillRect(x+12, y+4, 2, 2);
+        ctx.fillStyle = '#ffcc00'; ctx.fillRect(x+16, y+4, 6, 4);
+        ctx.fillStyle = '#ddd'; ctx.fillRect(x+6, y+12, 8, 4);
+        ctx.fillStyle = '#ffcc00';
+        if(player.grounded && Math.abs(player.vx) > 0.1) {
+            if(Math.floor(Date.now()/100) % 2 === 0) ctx.fillRect(x+6, y+20, 2, 4); else ctx.fillRect(x+14, y+20, 2, 4);
+        } else { ctx.fillRect(x+6, y+20, 2, 4); ctx.fillRect(x+14, y+20, 2, 4); }
+        ctx.restore();
+    }
+
+    function drawRamen(x, y, w, h, vx) {
+        ctx.save();
+        ctx.fillStyle = 'var(--enemy-ramen-base)'; ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = 'var(--enemy-ramen-detail)'; ctx.lineWidth = 2; ctx.strokeRect(x+2, y+2, w-4, h-4);
+        let faceX = x; if(vx < 0) { ctx.translate(x + w, y); ctx.scale(-1, 1); faceX = 0; y = 0; } else { ctx.translate(x, y); faceX = 0; y = 0; }
+        ctx.fillStyle = 'var(--enemy-ramen-eyes)'; ctx.fillRect(faceX+4, y+8, 4, 6); ctx.fillRect(faceX+16, y+8, 4, 6); 
+        ctx.fillStyle = '#fff'; ctx.fillRect(faceX+5, y+9, 2, 2); ctx.fillRect(faceX+17, y+9, 2, 2);
+        ctx.fillStyle = 'var(--enemy-ramen-eyes)'; ctx.fillRect(faceX+10, y+16, 4, 2); ctx.fillRect(faceX+9, y+14, 2, 2); ctx.fillRect(faceX+13, y+14, 2, 2);
+        ctx.restore();
+    }
+
+    function spawnParticles(x, y, color, count) {
+        if(!particlesOn) return;
+        for(let i=0; i<count; i++) particles.push({ x, y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, life: 20 + Math.random()*10, color });
+    }
+    function updateParticles() {
+        for(let i=particles.length-1; i>=0; i--) { let p = particles[i]; p.x += p.vx; p.y += p.vy; p.life--; if(p.life <= 0) particles.splice(i, 1); }
+    }
+    function drawParticles() { particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life/30; ctx.fillRect(p.x, p.y, 4, 4); }); ctx.globalAlpha = 1.0; }
+
+    function draw() {
+        ctx.fillStyle = '#1a1c2c'; ctx.fillRect(0,0,800,600);
+        
+        ctx.strokeStyle = '#2f484e'; ctx.lineWidth = 2; ctx.beginPath();
+        for(let i=0; i<800; i+=50) { ctx.moveTo(i,0); ctx.lineTo(i,600); }
+        for(let i=0; i<600; i+=25) { ctx.moveTo(0,i); ctx.lineTo(800,i); }
+        ctx.stroke();
+
+        if(state === 'PLAY' || state === 'WIN') {
+            ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.font = '150px "Press Start 2P"'; ctx.textAlign = 'center'; ctx.fillText(currentLevel + 1, 400, 350);
+
+            if(currentLevel === 0) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.font = '14px "Press Start 2P"'; ctx.textAlign = 'center';
+                ctx.fillText("WASD / ARROWS = MOVE & JUMP", 400, 150);
+                ctx.fillText("SPACEBAR = DASH", 400, 200);
+                ctx.fillText("COLLECT GEMS TO OPEN THE EXIT", 400, 250);
+            }
+
+            water.forEach(w => { 
+                ctx.fillStyle = '#be4a2f'; ctx.fillRect(w.x, w.y, w.w, w.h); 
+                ctx.fillStyle = '#ff4500'; ctx.fillRect(w.x, w.y, w.w, 10); 
+                if(Math.random() < 0.1) spawnParticles(w.x + Math.random()*w.w, w.y, '#ff4500', 1);
+            });
+            
+            ctx.fillStyle = '#111'; ctx.fillRect(exit.x, exit.y, exit.w, exit.h);
+            ctx.strokeStyle = '#577277'; ctx.lineWidth = 2; ctx.strokeRect(exit.x, exit.y, exit.w, exit.h);
+            if(collectibles.every(g=>g.collected)) { ctx.fillStyle = '#d77bba'; ctx.globalAlpha = 0.4; ctx.fillRect(exit.x, exit.y, exit.w, exit.h); ctx.globalAlpha = 1; }
+
+            platforms.forEach(p => { 
+                ctx.fillStyle = '#44891a'; ctx.fillRect(p.x, p.y, p.w, p.h); 
+                ctx.fillStyle = '#a3ce27'; ctx.fillRect(p.x, p.y, p.w, 4);
+                ctx.strokeStyle = '#1a1c2c'; ctx.strokeRect(p.x, p.y, p.w, p.h);
+            });
+            
+            enemies.forEach(e => drawRamen(e.x, e.y, e.w, e.h, e.vx));
+            
+            collectibles.forEach(g => { 
+                if(!g.collected) { ctx.fillStyle = '#d77bba'; ctx.beginPath(); ctx.moveTo(g.x+10, g.y); ctx.lineTo(g.x+20, g.y+10); ctx.lineTo(g.x+10, g.y+20); ctx.lineTo(g.x, g.y+10); ctx.fill(); }
+            });
+            
+            drawDuck(player.x, player.y, player.facing);
+
+            if(handObj.active) {
+                if(handObj.state === 'warning') { ctx.fillStyle = 'rgba(255, 0, 0, 0.3)'; ctx.fillRect(handObj.x, 0, 80, 600); } 
+                else if (handObj.state === 'smash') { ctx.fillStyle = '#e5c29f'; ctx.fillRect(handObj.x+10, handObj.y, 60, 600); ctx.fillStyle = '#fff'; ctx.fillRect(handObj.x, handObj.y, 80, 500); }
+            }
+
+            if(beamKnife.active) {
+                ctx.shadowBlur = 20; ctx.shadowColor = "#00ffff";
+                ctx.fillStyle = '#00ffff'; ctx.fillRect(beamKnife.x, beamKnife.y, beamKnife.w, beamKnife.h);
+                ctx.shadowBlur = 0; 
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(beamKnife.x + 4, beamKnife.y + 4, beamKnife.w - 8, beamKnife.h - 8);
+            }
+
+            drawParticles();
+        }
+        update(); requestAnimationFrame(draw);
+    }
+
+    function goToMenu() { state = 'MENU'; document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden')); document.getElementById('menu-screen').classList.remove('hidden'); document.getElementById('game-ui').classList.add('hidden'); }
+    function goToSettings() { document.getElementById('menu-screen').classList.add('hidden'); document.getElementById('settings-screen').classList.remove('hidden'); }
+    function goToCredits() { document.getElementById('menu-screen').classList.add('hidden'); document.getElementById('credits-screen').classList.remove('hidden'); }
+    
+    function goToLevelSelect() {
+        document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+        document.getElementById('level-screen').classList.remove('hidden');
+        const grid = document.getElementById('level-grid'); grid.innerHTML = '';
+        for(let i=0; i<20; i++) {
+            const b = document.createElement('div'); b.className = 'lvl-btn' + (i >= unlockedLevels ? ' locked' : ''); b.innerText = i+1; 
+            if(i < unlockedLevels) b.onclick = () => startLevel(i);
+            grid.appendChild(b);
+        }
+    }
+
+    function nextLevel() { if(currentLevel < 19) startLevel(currentLevel + 1); else goToMenu(); }
+
+    requestAnimationFrame(draw);
+</script>
+</body>
+</html>
