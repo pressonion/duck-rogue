@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>DUCK ROGUE: THE KITCHEN</title>
+    <title>DUCK ROGUE: THE DEEP FREEZE</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
@@ -52,17 +52,20 @@
         .setting-row { display: flex; gap: 20px; align-items: center; margin-bottom: 20px; width: 350px; justify-content: space-between;}
         input[type=text] { background: #111; border: 2px solid #577277; color: #a3ce27; padding: 10px; font-family: inherit; text-align: center; margin-bottom: 10px; font-size: 16px; outline: none; width: 250px;}
         
-        .level-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; background: #111; padding: 20px; border: 4px solid #577277; }
-        .lvl-btn { width: 50px; height: 50px; background: #2f484e; border: 2px solid #577277; color: #fff; display: flex; justify-content: center; align-items: center; cursor: pointer; font-size: 14px; }
+        .level-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; background: #111; padding: 15px; border: 4px solid #577277; max-height: 350px; overflow-y: auto;}
+        .lvl-btn { width: 45px; height: 45px; background: #2f484e; border: 2px solid #577277; color: #fff; display: flex; justify-content: center; align-items: center; cursor: pointer; font-size: 12px; }
         .lvl-btn:hover { background: #44891a; border-color: #a3ce27; }
         .lvl-btn.locked { opacity: 0.4; pointer-events: none; background: #111; border-color: #333; }
+        .lvl-btn.ice { background: #1e3450; border-color: #4a90e2; }
+        .lvl-btn.ice:hover { background: #4a90e2; border-color: #ffffff; }
 
         .shop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; background: #111; padding: 15px; border: 4px solid #577277;}
         .skin-card { background: #1a1c2c; border: 2px solid #2f484e; padding: 10px; display: flex; flex-direction: column; align-items: center; width: 130px; box-sizing: border-box;}
         .skin-preview { width: 48px; height: 48px; margin-bottom: 10px; image-rendering: pixelated; position: relative;}
 
-        /* Ending Sequence Styles */
         .fade-in { opacity: 0; transition: opacity 2s ease-in; }
+        .flash { animation: flashScreen 0.2s infinite; }
+        @keyframes flashScreen { 0% { background: #fff; } 50% { background: #f00; } 100% { background: #000; } }
     </style>
 </head>
 <body>
@@ -137,15 +140,20 @@
         </div>
     </div>
 
-    <div id="ending-screen" class="screen hidden">
-        <h1 id="end-1" class="fade-in" style="font-size: 24px; color: #fff; text-shadow: none;">THE KITCHEN IS DEFEATED.</h1>
-        <h1 id="end-2" class="fade-in" style="font-size: 32px; color: var(--gold); margin-top: 20px;">THE DUCK IS FREE.</h1>
-        
-        <div id="end-3" class="fade-in" style="margin-top: 40px; transform: scale(3);">
+    <div id="fake-ending-screen" class="screen hidden" style="background: #050505;">
+        <h1 id="fe-1" class="fade-in" style="font-size: 24px; color: #fff; text-shadow: none;">THE KITCHEN IS DEFEATED.</h1>
+        <h1 id="fe-2" class="fade-in" style="font-size: 32px; color: var(--gold); margin-top: 20px;">THE DUCK IS FREE...</h1>
+        <h1 id="fe-3" class="hidden" style="font-size: 48px; color: #be4a2f; margin-top: 40px; text-shadow: 4px 4px 0 #000;">JUST KIDDING.</h1>
+        <button id="fe-btn" class="btn hidden" style="margin-top: 40px; width: 250px; background: #be4a2f;" onclick="startLevel(20)">ENTER THE FREEZER</button>
+    </div>
+
+    <div id="real-ending-screen" class="screen hidden">
+        <h1 id="re-1" class="fade-in" style="font-size: 24px; color: #fff; text-shadow: none;">THE FREEZER IS DEFEATED.</h1>
+        <h1 id="re-2" class="fade-in" style="font-size: 32px; color: var(--gold); margin-top: 20px;">THE DUCK IS TRULY FREE.</h1>
+        <div id="re-3" class="fade-in" style="margin-top: 40px; transform: scale(3);">
             <canvas id="endCanvas" width="48" height="48" class="skin-preview"></canvas>
         </div>
-        
-        <button id="end-btn" class="btn fade-in" style="margin-top: 80px; width: 200px;" onclick="resetFromEnding()">BACK TO MENU</button>
+        <button id="re-btn" class="btn fade-in" style="margin-top: 80px; width: 200px;" onclick="resetFromEnding()">BACK TO MENU</button>
     </div>
 </div>
 
@@ -155,9 +163,9 @@
 
     let state = 'MENU';
     let currentLevel = 0, gems = 0, unlockedLevels = 1;
+    const TOTAL_LEVELS = 31; // 20 Kitchen + 11 Freezer
     let scanlinesOn = false, particlesOn = true;
     
-    // Cheat States
     let devModeUnlocked = false;
     let godModeOn = false;
     
@@ -180,7 +188,8 @@
     let handObj = {x:0, y:-600, active:false, timer:0, state: 'waiting'};
     let beamKnife = {x: 800, y: 300, w: 120, h: 20, vx: -7, active: false};
 
-    const uniqueLayouts = [
+    // Kitchen Layouts (1-18)
+    const kitchenLayouts = [
         { p: [{x:100,y:450,w:80}, {x:350,y:350,w:80}, {x:600,y:250,w:80}], e: [] },
         { p: [{x:150,y:350,w:500}], e: [{pIdx: 0}] },
         { p: [{x:50,y:250,w:100}, {x:350,y:450,w:100}, {x:650,y:250,w:100}], e: [] },
@@ -201,38 +210,78 @@
         { p: [{x:250,y:450,w:50}, {x:500,y:350,w:50}, {x:250,y:250,w:50}, {x:500,y:150,w:50}], e: [] }
     ];
 
+    // Freezer Layouts (21 - 31) - 11 Levels total
+    const iceLayouts = [
+        { p: [{x:150,y:450,w:120}, {x:350,y:350,w:120}, {x:550,y:250,w:120}], e: [] },
+        { p: [{x:200,y:400,w:400}], e: [{pIdx: 0}] },
+        { p: [{x:50,y:480,w:100}, {x:250,y:380,w:100}, {x:450,y:280,w:100}, {x:650,y:180,w:100}], e: [] },
+        { p: [{x:150,y:450,w:200}, {x:450,y:450,w:200}], e: [{pIdx:0}, {pIdx:1}] },
+        { p: [{x:350,y:450,w:100}, {x:350,y:300,w:100}, {x:350,y:150,w:100}], e: [] },
+        { p: [{x:100,y:500,w:150}, {x:550,y:500,w:150}, {x:325,y:350,w:150}], e: [{pIdx: 2}] },
+        { p: [{x:50,y:250,w:100}, {x:650,y:250,w:100}, {x:350,y:450,w:100}], e: [] },
+        { p: [{x:200,y:450,w:400}, {x:300,y:300,w:200}], e: [{pIdx: 0}] },
+        { p: [{x:100,y:350,w:80}, {x:250,y:250,w:80}, {x:400,y:350,w:80}, {x:550,y:250,w:80}], e: [] },
+        { p: [{x:100,y:500,w:150}, {x:550,y:500,w:150}, {x:325,y:250,w:150}], e: [{pIdx: 0}, {pIdx: 1}] },
+        { p: [{x:100,y:500,w:150}, {x:550,y:500,w:150}, {x:200,y:250,w:400}], e: [{pIdx: 0}, {pIdx: 2}] } // Final Freezer Boss
+    ];
+
     const levels = [];
-    for(let i=0; i<20; i++) {
+    for(let i=0; i<TOTAL_LEVELS; i++) {
         let lvl = {
             spawn: {x: 50, y: 400},
             plats: [ {x:0, y:580, w:800, h:20}, {x:0, y:0, w:20, h:600}, {x:780, y:0, w:20, h:600} ],
-            water: [], enemies: [], gems: [], hasHand: false, hasBoss: false, exit: {x: 700, y: 100}
+            water: [], enemies: [], gems: [], hasHand: false, hasBoss: false, exit: {x: 700, y: 100}, isIce: false
         };
 
-        if(i === 0) {
-            lvl.plats.push({x:200, y:500, w:150, h:20}, {x:450, y:400, w:150, h:20});
-            lvl.gems = [{x:260, y:450}, {x:510, y:350}]; lvl.exit = {x: 650, y: 530};
-        } 
-        else if (i === 19) {
-            lvl.plats.push({x:100, y:450, w:100, h:20}, {x:350, y:350, w:100, h:20}, {x:600, y:450, w:100, h:20}, {x:220, y:200, w:100, h:20}, {x:480, y:200, w:100, h:20});
-            lvl.water = [{x:20, y:530, w:760, h:70}]; 
-            lvl.enemies = [ {x:350, y:326, w:24, h:24, vx: 2, minX: 350, maxX: 450}, {x:220, y:176, w:24, h:24, vx: -1.5, minX: 220, maxX: 320}, {x:480, y:176, w:24, h:24, vx: 1.5, minX: 480, maxX: 580} ];
-            lvl.gems = [{x:140, y:400}, {x:640, y:400}, {x:390, y:300}, {x:260, y:150}, {x:520, y:150}];
-            lvl.exit = {x: 380, y: 70}; lvl.hasHand = true; lvl.hasBoss = true;
-        } 
-        else {
-            let layout = uniqueLayouts[i - 1]; 
+        if (i < 20) {
+            lvl.isIce = false;
+            if(i === 0) {
+                lvl.plats.push({x:200, y:500, w:150, h:20}, {x:450, y:400, w:150, h:20});
+                lvl.gems = [{x:260, y:450}, {x:510, y:350}]; lvl.exit = {x: 650, y: 530};
+            } 
+            else if (i === 19) {
+                // KITCHEN BOSS (FLOOR 20)
+                lvl.plats.push({x:100, y:450, w:100, h:20}, {x:350, y:350, w:100, h:20}, {x:600, y:450, w:100, h:20}, {x:220, y:200, w:100, h:20}, {x:480, y:200, w:100, h:20});
+                lvl.water = [{x:20, y:530, w:760, h:70}]; 
+                lvl.enemies = [ {x:350, y:326, w:24, h:24, vx: 2, minX: 350, maxX: 450} ];
+                lvl.gems = [{x:140, y:400}, {x:640, y:400}, {x:390, y:300}, {x:260, y:150}, {x:520, y:150}];
+                lvl.exit = {x: 380, y: 70}; lvl.hasHand = true; lvl.hasBoss = true;
+            } 
+            else {
+                let layout = kitchenLayouts[i - 1]; 
+                layout.p.forEach(p => { lvl.plats.push({x: p.x, y: p.y, w: p.w, h: 20}); });
+                let p1 = layout.p[0]; let pLast = layout.p[layout.p.length-1];
+                lvl.gems.push({x: p1.x + p1.w/2 - 10, y: p1.y - 40});
+                lvl.gems.push({x: pLast.x + pLast.w/2 - 10, y: pLast.y - 40});
+                let highestP = layout.p.reduce((min, p) => p.y < min.y ? p : min, layout.p[0]);
+                lvl.exit = {x: highestP.x + highestP.w/2 - 20, y: highestP.y - 50};
+                if(i >= 3) {
+                    layout.e.forEach(eData => { let targetP = layout.p[eData.pIdx]; lvl.enemies.push({x: targetP.x + 10, y: targetP.y - 24, w: 24, h: 24, vx: 2, minX: targetP.x, maxX: targetP.x + targetP.w}); });
+                }
+                if(i >= 7) lvl.water.push({x:20, y:550, w:760, h:50}); 
+                if(i >= 13) lvl.hasHand = true;
+            }
+        } else {
+            // THE DEEP FREEZE (FLOORS 21-31)
+            lvl.isIce = true;
+            let iceIndex = i - 20; // 0 to 10
+            let layout = iceLayouts[iceIndex];
             layout.p.forEach(p => { lvl.plats.push({x: p.x, y: p.y, w: p.w, h: 20}); });
             let p1 = layout.p[0]; let pLast = layout.p[layout.p.length-1];
             lvl.gems.push({x: p1.x + p1.w/2 - 10, y: p1.y - 40});
             lvl.gems.push({x: pLast.x + pLast.w/2 - 10, y: pLast.y - 40});
             let highestP = layout.p.reduce((min, p) => p.y < min.y ? p : min, layout.p[0]);
             lvl.exit = {x: highestP.x + highestP.w/2 - 20, y: highestP.y - 50};
-            if(i >= 3) {
-                layout.e.forEach(eData => { let targetP = layout.p[eData.pIdx]; lvl.enemies.push({x: targetP.x + 10, y: targetP.y - 24, w: 24, h: 24, vx: 2, minX: targetP.x, maxX: targetP.x + targetP.w}); });
+            
+            if(iceIndex > 1) lvl.water.push({x:20, y:550, w:760, h:50});
+
+            layout.e.forEach(eData => { let targetP = layout.p[eData.pIdx]; lvl.enemies.push({x: targetP.x + 10, y: targetP.y - 24, w: 24, h: 24, vx: 2.5, minX: targetP.x, maxX: targetP.x + targetP.w}); });
+
+            // Final Boss for Level 31
+            if(iceIndex === 10) {
+                lvl.hasHand = true;
+                lvl.hasBoss = true;
             }
-            if(i >= 7) lvl.water.push({x:20, y:550, w:760, h:50}); 
-            if(i >= 13) lvl.hasHand = true;
         }
         levels.push(lvl);
     }
@@ -254,7 +303,7 @@
         const input = document.getElementById('dev-code').value.toLowerCase().trim();
         const msg = document.getElementById('code-msg');
         if(input === 'justice duck') {
-            unlockedLevels = 20; gems += 1000; devModeUnlocked = true;
+            unlockedLevels = TOTAL_LEVELS; gems += 1000; devModeUnlocked = true;
             msg.innerText = "JUSTICE SERVED:\nALL FLOORS, 1000 GEMS, GOD MODE UNLOCKED!"; msg.style.color = "#a3ce27";
             setTimeout(() => { document.getElementById('dev-code').value = ''; msg.innerText = ''; goToLevelSelect(); }, 2500);
         } else {
@@ -352,14 +401,14 @@
         player.x = d.spawn.x; player.y = d.spawn.y; player.vx = 0; player.vy = 0; player.jumps = 0; player.dashTimer = 0;
 
         handObj = {x:0, y:-600, active: d.hasHand, timer: 0, state: 'waiting'};
-        beamKnife = {x: 800, y: 250, w: 250, h: 16, vx: -9, active: d.hasBoss};
+        beamKnife = {x: 800, y: 250, w: 250, h: 16, vx: d.isIce ? -11 : -9, active: d.hasBoss}; 
 
         state = 'PLAY'; 
         document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
         document.getElementById('game-ui').classList.remove('hidden');
-        document.getElementById('lvl-display').innerText = idx + 1;
         
-        // Handle God Mode button visibility
+        document.getElementById('lvl-display').innerText = (currentLevel + 1);
+        
         const godBtn = document.getElementById('god-btn');
         if(devModeUnlocked) godBtn.classList.remove('hidden');
         else godBtn.classList.add('hidden');
@@ -367,19 +416,25 @@
 
     function update() {
         if(state !== 'PLAY') return;
+        const d = levels[currentLevel];
 
         if(player.dashTimer > 0) player.dashTimer--;
         else {
-            if(keys.left) { player.vx = -5; player.facing = -1; }
-            else if(keys.right) { player.vx = 5; player.facing = 1; }
-            else player.vx *= 0.8;
+            if(d.isIce) {
+                if(keys.left) { player.vx -= 0.6; player.facing = -1; if(player.vx < -6) player.vx = -6; }
+                else if(keys.right) { player.vx += 0.6; player.facing = 1; if(player.vx > 6) player.vx = 6; }
+                else player.vx *= 0.96; 
+            } else {
+                if(keys.left) { player.vx = -5; player.facing = -1; }
+                else if(keys.right) { player.vx = 5; player.facing = 1; }
+                else player.vx *= 0.8;
+            }
             player.vy += 0.6;
         }
 
         player.x += player.vx; resolveCollisions('x');
         player.y += player.vy; resolveCollisions('y');
 
-        // Death Mechanics (Protected by God Mode)
         if(!godModeOn) {
             if(player.y > 600) die();
             water.forEach(w => { if(rectIntersect(player.x, player.y, player.w, player.h, w.x, w.y+10, w.w, w.h-10)) die(); });
@@ -388,9 +443,7 @@
                 if(rectIntersect(player.x, player.y, player.w, player.h, e.x+2, e.y+2, e.w-4, e.h-4)) die();
             });
         } else {
-            // Invincible Fall Bounce
             if(player.y > 600) { player.y = 0; player.vy = 0; }
-            // Enemies still move
             enemies.forEach(e => { e.x += e.vx; if(e.x < e.minX || e.x > e.maxX - e.w) e.vx *= -1; });
         }
 
@@ -401,11 +454,17 @@
             }
         });
 
-        // Exit / Win Condition
         if(collectibles.every(g => g.collected) && rectIntersect(player.x, player.y, player.w, player.h, exit.x, exit.y, exit.w, exit.h)) {
+            // FAKE ENDING AT FLOOR 20
             if(currentLevel === 19) {
-                playEndingSequence();
-            } else {
+                if(unlockedLevels <= 20) unlockedLevels = 21; 
+                playFakeEndingSequence();
+            } 
+            // REAL ENDING AT FLOOR 31
+            else if(currentLevel === TOTAL_LEVELS - 1) {
+                playRealEndingSequence();
+            } 
+            else {
                 state = 'WIN'; if(currentLevel + 1 >= unlockedLevels) unlockedLevels++;
                 document.getElementById('win-screen').classList.remove('hidden');
             }
@@ -486,37 +545,62 @@
     function drawParticles() { particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life/30; ctx.fillRect(p.x, p.y, 4, 4); }); ctx.globalAlpha = 1.0; }
 
     function draw() {
-        ctx.fillStyle = '#1a1c2c'; ctx.fillRect(0,0,800,600);
+        const d = levels[currentLevel] || levels[0];
         
-        ctx.strokeStyle = '#2f484e'; ctx.lineWidth = 2; ctx.beginPath();
+        if(d.isIce) {
+            ctx.fillStyle = '#101622'; ctx.fillRect(0,0,800,600);
+            ctx.strokeStyle = '#1e3450'; 
+        } else {
+            ctx.fillStyle = '#1a1c2c'; ctx.fillRect(0,0,800,600);
+            ctx.strokeStyle = '#2f484e'; 
+        }
+
+        ctx.lineWidth = 2; ctx.beginPath();
         for(let i=0; i<800; i+=50) { ctx.moveTo(i,0); ctx.lineTo(i,600); }
         for(let i=0; i<600; i+=25) { ctx.moveTo(0,i); ctx.lineTo(800,i); }
         ctx.stroke();
 
         if(state === 'PLAY' || state === 'WIN') {
-            ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.font = '150px "Press Start 2P"'; ctx.textAlign = 'center'; ctx.fillText(currentLevel + 1, 400, 350);
+            ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.font = '150px "Press Start 2P"'; ctx.textAlign = 'center'; 
+            ctx.fillText(currentLevel + 1, 400, 350);
 
             if(currentLevel === 0) {
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.font = '14px "Press Start 2P"'; ctx.textAlign = 'center';
                 ctx.fillText("WASD / ARROWS = MOVE & JUMP", 400, 150);
                 ctx.fillText("SPACEBAR = DASH", 400, 200);
-                ctx.fillText("COLLECT GEMS TO OPEN THE EXIT", 400, 250);
+            }
+            if(currentLevel === 20) { 
+                ctx.fillStyle = 'rgba(168, 216, 234, 0.4)'; ctx.font = '14px "Press Start 2P"'; ctx.textAlign = 'center';
+                ctx.fillText("WELCOME TO THE FREEZER.", 400, 150);
+                ctx.fillText("WATCH YOUR STEP. IT'S SLIPPERY.", 400, 200);
             }
 
             water.forEach(w => { 
-                ctx.fillStyle = '#be4a2f'; ctx.fillRect(w.x, w.y, w.w, w.h); 
-                ctx.fillStyle = '#ff4500'; ctx.fillRect(w.x, w.y, w.w, 10); 
-                if(Math.random() < 0.1) spawnParticles(w.x + Math.random()*w.w, w.y, '#ff4500', 1);
+                if(d.isIce) {
+                    ctx.fillStyle = '#2a5a9e'; ctx.fillRect(w.x, w.y, w.w, w.h); 
+                    ctx.fillStyle = '#4a90e2'; ctx.fillRect(w.x, w.y, w.w, 10); 
+                    if(Math.random() < 0.1) spawnParticles(w.x + Math.random()*w.w, w.y, '#ffffff', 1);
+                } else {
+                    ctx.fillStyle = '#be4a2f'; ctx.fillRect(w.x, w.y, w.w, w.h); 
+                    ctx.fillStyle = '#ff4500'; ctx.fillRect(w.x, w.y, w.w, 10); 
+                    if(Math.random() < 0.1) spawnParticles(w.x + Math.random()*w.w, w.y, '#ff4500', 1);
+                }
             });
             
             ctx.fillStyle = '#111'; ctx.fillRect(exit.x, exit.y, exit.w, exit.h);
-            ctx.strokeStyle = '#577277'; ctx.lineWidth = 2; ctx.strokeRect(exit.x, exit.y, exit.w, exit.h);
+            ctx.strokeStyle = d.isIce ? '#4a90e2' : '#577277'; ctx.lineWidth = 2; ctx.strokeRect(exit.x, exit.y, exit.w, exit.h);
             if(collectibles.every(g=>g.collected)) { ctx.fillStyle = '#d77bba'; ctx.globalAlpha = 0.4; ctx.fillRect(exit.x, exit.y, exit.w, exit.h); ctx.globalAlpha = 1; }
 
             platforms.forEach(p => { 
-                ctx.fillStyle = '#44891a'; ctx.fillRect(p.x, p.y, p.w, p.h); 
-                ctx.fillStyle = '#a3ce27'; ctx.fillRect(p.x, p.y, p.w, 4);
-                ctx.strokeStyle = '#1a1c2c'; ctx.strokeRect(p.x, p.y, p.w, p.h);
+                if(d.isIce) {
+                    ctx.fillStyle = '#a8d8ea'; ctx.fillRect(p.x, p.y, p.w, p.h); 
+                    ctx.fillStyle = '#ffffff'; ctx.fillRect(p.x, p.y, p.w, 4);
+                    ctx.strokeStyle = '#101622'; ctx.strokeRect(p.x, p.y, p.w, p.h);
+                } else {
+                    ctx.fillStyle = '#44891a'; ctx.fillRect(p.x, p.y, p.w, p.h); 
+                    ctx.fillStyle = '#a3ce27'; ctx.fillRect(p.x, p.y, p.w, 4);
+                    ctx.strokeStyle = '#1a1c2c'; ctx.strokeRect(p.x, p.y, p.w, p.h);
+                }
             });
             
             enemies.forEach(e => drawRamen(e.x, e.y, e.w, e.h, e.vx));
@@ -533,15 +617,15 @@
             }
 
             if(beamKnife.active) {
-                ctx.shadowBlur = 20; ctx.shadowColor = "#00ffff";
-                ctx.fillStyle = '#00ffff'; ctx.fillRect(beamKnife.x, beamKnife.y, beamKnife.w, beamKnife.h);
+                let knifeColor = d.isIce ? "#ff00ff" : "#00ffff"; 
+                ctx.shadowBlur = 20; ctx.shadowColor = knifeColor;
+                ctx.fillStyle = knifeColor; ctx.fillRect(beamKnife.x, beamKnife.y, beamKnife.w, beamKnife.h);
                 ctx.shadowBlur = 0; 
                 ctx.fillStyle = '#ffffff'; ctx.fillRect(beamKnife.x + 4, beamKnife.y + 4, beamKnife.w - 8, beamKnife.h - 8);
             }
 
             drawParticles();
             
-            // Draw God Mode Aura
             if(godModeOn) {
                 ctx.beginPath(); ctx.arc(player.x+12, player.y+12, 20, 0, Math.PI*2);
                 ctx.strokeStyle = 'rgba(163, 206, 39, 0.5)'; ctx.lineWidth = 3; ctx.stroke();
@@ -550,38 +634,61 @@
         update(); requestAnimationFrame(draw);
     }
 
-    function playEndingSequence() {
+    function playFakeEndingSequence() {
         state = 'ENDING';
         document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
         document.getElementById('game-ui').classList.add('hidden');
-        document.getElementById('ending-screen').classList.remove('hidden');
+        document.getElementById('fake-ending-screen').classList.remove('hidden');
         
-        // Reset opacities for replayability
-        document.getElementById('end-1').style.opacity = '0';
-        document.getElementById('end-2').style.opacity = '0';
-        document.getElementById('end-3').style.opacity = '0';
-        document.getElementById('end-btn').style.opacity = '0';
+        document.getElementById('fe-1').style.opacity = '0';
+        document.getElementById('fe-2').style.opacity = '0';
+        document.getElementById('fe-3').classList.add('hidden');
+        document.getElementById('fe-btn').classList.add('hidden');
 
-        // Draw Player's Duck on Ending Screen
+        // Initial setup for the trick
+        setTimeout(() => document.getElementById('fe-1').style.opacity = '1', 1000);
+        setTimeout(() => document.getElementById('fe-2').style.opacity = '1', 3000);
+        
+        // The rug pull!
+        setTimeout(() => {
+            document.getElementById('fe-1').style.opacity = '0';
+            document.getElementById('fe-2').style.opacity = '0';
+            
+            // Turn on scanlines for a glitchy vibe
+            document.getElementById('scanlines').style.opacity = '1'; 
+            
+            setTimeout(() => {
+                document.getElementById('fe-3').classList.remove('hidden');
+                document.getElementById('fe-btn').classList.remove('hidden');
+                // Turn scanlines back to user preference
+                if(!scanlinesOn) document.getElementById('scanlines').style.opacity = '0';
+            }, 800);
+        }, 6000);
+    }
+
+    function playRealEndingSequence() {
+        state = 'ENDING';
+        document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+        document.getElementById('game-ui').classList.add('hidden');
+        document.getElementById('real-ending-screen').classList.remove('hidden');
+        
+        document.getElementById('re-1').style.opacity = '0';
+        document.getElementById('re-2').style.opacity = '0';
+        document.getElementById('re-3').style.opacity = '0';
+        document.getElementById('re-btn').style.opacity = '0';
+
         const eCanvas = document.getElementById('endCanvas');
         const eCtx = eCanvas.getContext('2d');
         eCtx.clearRect(0, 0, 48, 48);
-        eCtx.save();
-        eCtx.scale(2, 2);
-        drawDuckContext(eCtx, 0, 4, 1, skins[currentSkin]);
-        eCtx.restore();
+        eCtx.save(); eCtx.scale(2, 2); drawDuckContext(eCtx, 0, 4, 1, skins[currentSkin]); eCtx.restore();
 
-        // Reveal Sequence
-        setTimeout(() => document.getElementById('end-1').style.opacity = '1', 1000);
-        setTimeout(() => document.getElementById('end-2').style.opacity = '1', 3000);
-        setTimeout(() => document.getElementById('end-3').style.opacity = '1', 5000);
-        setTimeout(() => document.getElementById('end-btn').style.opacity = '1', 7000);
+        setTimeout(() => document.getElementById('re-1').style.opacity = '1', 1000);
+        setTimeout(() => document.getElementById('re-2').style.opacity = '1', 3000);
+        setTimeout(() => document.getElementById('re-3').style.opacity = '1', 5000);
+        setTimeout(() => document.getElementById('re-btn').style.opacity = '1', 7000);
     }
 
-    function resetFromEnding() {
-        // Optional: Reset game progress here if you want it to be a true rogue-like loop
-        goToMenu();
-    }
+    function resetFromEnding() { goToMenu(); }
 
     function goToMenu() { state = 'MENU'; document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden')); document.getElementById('menu-screen').classList.remove('hidden'); document.getElementById('game-ui').classList.add('hidden'); }
     function goToSettings() { document.getElementById('menu-screen').classList.add('hidden'); document.getElementById('settings-screen').classList.remove('hidden'); }
@@ -591,14 +698,21 @@
         document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
         document.getElementById('level-screen').classList.remove('hidden');
         const grid = document.getElementById('level-grid'); grid.innerHTML = '';
-        for(let i=0; i<20; i++) {
-            const b = document.createElement('div'); b.className = 'lvl-btn' + (i >= unlockedLevels ? ' locked' : ''); b.innerText = i+1; 
+        for(let i=0; i<TOTAL_LEVELS; i++) {
+            let btnClass = 'lvl-btn';
+            if (i >= unlockedLevels) btnClass += ' locked';
+            if (i >= 20) btnClass += ' ice'; 
+
+            const b = document.createElement('div'); 
+            b.className = btnClass; 
+            b.innerText = i + 1; 
+            
             if(i < unlockedLevels) b.onclick = () => startLevel(i);
             grid.appendChild(b);
         }
     }
 
-    function nextLevel() { if(currentLevel < 19) startLevel(currentLevel + 1); else goToMenu(); }
+    function nextLevel() { if(currentLevel < TOTAL_LEVELS - 1) startLevel(currentLevel + 1); else goToMenu(); }
 
     requestAnimationFrame(draw);
 </script>
