@@ -61,13 +61,11 @@
         .lvl-btn.ice { background: #1e3450; border-color: #4a90e2; }
         .lvl-btn.ice:hover { background: #4a90e2; border-color: #ffffff; }
 
-        .shop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; background: #111; padding: 15px; border: 4px solid #577277; max-height: 350px; overflow-y: auto;}
+        .shop-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 20px; background: #111; padding: 15px; border: 4px solid #577277; max-height: 350px; overflow-y: auto;}
         .skin-card { background: #1a1c2c; border: 2px solid #2f484e; padding: 10px; display: flex; flex-direction: column; align-items: center; width: 130px; box-sizing: border-box; min-height: 140px; justify-content: space-between;}
         .skin-preview { width: 48px; height: 48px; margin-bottom: 10px; image-rendering: pixelated; position: relative;}
 
         .fade-in { opacity: 0; transition: opacity 2s ease-in; }
-        .flash { animation: flashScreen 0.2s infinite; }
-        @keyframes flashScreen { 0% { background: #fff; } 50% { background: #f00; } 100% { background: #000; } }
     </style>
 </head>
 <body>
@@ -79,9 +77,10 @@
     <div id="game-ui" class="ui-layer hidden">
         <div class="hud">
             <div>💎 <span id="gem-count">0</span></div>
-            <div>FLOOR <span id="lvl-display">1</span></div>
+            <div id="hud-level">FLOOR <span id="lvl-display">1</span></div>
+            <div id="timer-display" class="hidden" style="color: #be4a2f;">⏳ 10:00.00</div>
         </div>
-        <button class="btn" style="position:absolute; top:20px; right:20px; pointer-events:auto; width: 130px;" onclick="goToMenu()">MENU</button>
+        <button class="btn" style="position:absolute; top:20px; right:20px; pointer-events:auto; width: 130px;" onclick="togglePause()">PAUSE</button>
         <button id="god-btn" class="btn hidden" style="position:absolute; top:75px; right:20px; pointer-events:auto; font-size:10px; width: 130px;" onclick="toggleGodMode()">GOD MODE: OFF</button>
         <div id="hard-indicator" class="hidden" style="position:absolute; bottom:20px; right:20px; color:#be4a2f; font-size:12px; text-shadow: 2px 2px 0 #000;">SUPERHARD ACTIVE</div>
     </div>
@@ -90,9 +89,30 @@
         <h1>ROGUE DUCK<br><span style="font-size: 20px; color:#fff;">THE KITCHEN</span></h1>
         <div style="display: flex; flex-direction: column; gap: 15px; width: 250px;">
             <button class="btn" style="padding: 20px; font-size: 16px;" onclick="goToLevelSelect()">ENTER DUNGEON</button>
+            <div style="color: var(--gold); font-size: 12px; text-align: center; margin-bottom: -10px; margin-top: 5px;">HIGH SCORE: <span id="arcade-hs">0</span></div>
+            <button class="btn" style="color: #a3ce27; border-color: #a3ce27;" onclick="startArcadeMode()">ARCADE MODE</button>
+            <button class="btn" style="color: #be4a2f; border-color: #be4a2f;" onclick="showTimeTrialMenu()">TIME TRIAL</button>
             <button class="btn" onclick="goToShop()" style="color: var(--gold); border-color: var(--gold);">DUCK SHOP</button>
             <button class="btn" onclick="goToSettings()">SETTINGS</button>
             <button class="btn" onclick="goToCredits()">CREDITS</button>
+        </div>
+    </div>
+
+    <div id="tt-menu-screen" class="screen hidden">
+        <h2 style="color: #be4a2f;">TIME TRIAL MODE</h2>
+        <p style="text-align: center; color: #fff; max-width: 450px; margin-bottom: 20px; font-size: 12px; line-height: 1.8;">
+            INSTRUCTIONS:<br>Beat all 31 floors before the 10-minute clock hits zero to unlock the exclusive CHRONO skin!<br><br>
+            <span style="color: #be4a2f;">WARNING:</span><br>The clock starts the exact second you click START. Dying will respawn you at the start of your current floor, but the timer will keep ticking!
+        </p>
+        <button class="btn" style="width: 200px; margin-bottom: 15px; border-color: #be4a2f; color: #be4a2f;" onclick="startTimeTrial()">START</button>
+        <button class="btn" style="width: 200px;" onclick="goToMenu()">BACK TO MENU</button>
+    </div>
+
+    <div id="pause-screen" class="screen hidden" style="background: rgba(0,0,0,0.85); z-index: 100;">
+        <h2>PAUSED</h2>
+        <div style="display: flex; flex-direction: column; gap: 15px; width: 250px;">
+            <button class="btn" onclick="togglePause()">RESUME</button>
+            <button class="btn" onclick="goToMenu()">EXIT TO MENU</button>
         </div>
     </div>
 
@@ -172,14 +192,26 @@
     const ctx = canvas.getContext('2d');
 
     let state = 'MENU';
+    let isPaused = false;
     let currentLevel = 0, gems = 0, unlockedLevels = 1;
     const TOTAL_LEVELS = 31; 
     let scanlinesOn = false, particlesOn = true, superHardOn = false;
     
     let devModeUnlocked = false;
     let godModeOn = false;
-    let superHardWins = []; // Tracks levels beaten on SUPERHARD
+    let superHardWins = []; 
     
+    // Time Trial Variables
+    let timeTrialOn = false;
+    let timeTrialFrames = 0;
+    const TIME_TRIAL_LIMIT = 10 * 60 * 60; // 10 minutes
+    
+    // Arcade Variables
+    let isArcadeMode = false;
+    let arcadeScore = 0;
+    let arcadeHighScore = 0;
+    let lastArcadePlatformY = 600;
+
     let currentSkin = 0;
     const skins = [
         { name: "CLASSIC", price: 0, unlocked: true, c1: "#fff", c2: "#ddd", head: "#fff" },
@@ -190,50 +222,50 @@
         { name: "CYBORG", price: 100, unlocked: false, c1: "#5a6988", c2: "#00ffff", head: "#5a6988" },
         { name: "COSMIC", price: 150, unlocked: false, c1: "#2b0f54", c2: "#d77bba", head: "#2b0f54" },
         { name: "HERO", price: 200, unlocked: false, c1: "#0044cc", c2: "#ff0000", head: "#0044cc" },
-        // THE NEW SECRET DUCK
+        { name: "CHRONO", price: 0, unlocked: false, c1: "#00ffff", c2: "#ffffff", head: "#00ffff", isTimeTrial: true },
         { name: "VOID DEMON", price: 0, unlocked: false, c1: "#000", c2: "#be4a2f", head: "#000", isSecret: true }
     ];
 
     const keys = { up: false, left: false, right: false, space: false };
     const player = { x: 0, y: 0, w: 24, h: 24, vx: 0, vy: 0, grounded: false, jumps: 0, facing: 1, dashTimer: 0 };
 
-    let platforms = [], water = [], enemies = [], collectibles = [], exit = {x:0,y:0,w:40,h:50}, particles = [];
+    let platforms = [], water = [], conveyors = [], enemies = [], collectibles = [], exit = {x:0,y:0,w:40,h:50}, particles = [];
     let handObj = {x:0, y:-600, active:false, timer:0, state: 'waiting'};
     let beamKnife = {x: 800, y: 300, w: 120, h: 20, vx: -7, active: false};
 
     const kitchenLayouts = [
-        { p: [{x:100,y:450,w:80}, {x:350,y:350,w:80}, {x:600,y:250,w:80}], e: [] },
-        { p: [{x:150,y:350,w:500}], e: [{pIdx: 0}] },
-        { p: [{x:50,y:250,w:100}, {x:350,y:450,w:100}, {x:650,y:250,w:100}], e: [] },
-        { p: [{x:200,y:480,w:60}, {x:400,y:380,w:60}, {x:200,y:280,w:60}, {x:400,y:180,w:60}], e: [] },
-        { p: [{x:350,y:450,w:100}, {x:200,y:300,w:100}, {x:500,y:300,w:100}, {x:350,y:150,w:100}], e: [{pIdx: 1}, {pIdx: 2}] },
-        { p: [{x:80,y:500,w:150}, {x:550,y:500,w:150}, {x:320,y:350,w:160}], e: [{pIdx: 2}] },
-        { p: [{x:100,y:400,w:200}, {x:500,y:400,w:200}, {x:350,y:200,w:100}], e: [{pIdx: 0}, {pIdx: 1}] },
-        { p: [{x:50,y:300,w:80}, {x:250,y:200,w:80}, {x:450,y:400,w:80}, {x:650,y:300,w:80}], e: [] },
-        { p: [{x:150,y:450,w:500}, {x:150,y:250,w:500}], e: [{pIdx: 0}, {pIdx: 1}] },
-        { p: [{x:350,y:500,w:100}, {x:350,y:350,w:100}, {x:350,y:200,w:100}], e: [] },
-        { p: [{x:100,y:250,w:150}, {x:350,y:450,w:100}, {x:550,y:250,w:150}], e: [{pIdx: 0}, {pIdx: 2}] },
-        { p: [{x:200,y:480,w:50}, {x:350,y:380,w:50}, {x:500,y:280,w:50}, {x:650,y:180,w:50}], e: [] },
-        { p: [{x:50,y:450,w:150}, {x:600,y:450,w:150}, {x:250,y:300,w:300}], e: [{pIdx: 2}] },
-        { p: [{x:300,y:480,w:200}, {x:100,y:330,w:100}, {x:600,y:330,w:100}, {x:300,y:180,w:200}], e: [{pIdx: 0}, {pIdx: 3}] },
-        { p: [{x:150,y:400,w:80}, {x:300,y:250,w:80}, {x:450,y:400,w:80}, {x:600,y:250,w:80}], e: [] },
-        { p: [{x:100,y:300,w:600}], e: [{pIdx: 0}, {pIdx: 0}] },
-        { p: [{x:100,y:500,w:100}, {x:600,y:500,w:100}, {x:100,y:200,w:100}, {x:600,y:200,w:100}, {x:350,y:350,w:100}], e: [{pIdx: 4}] },
-        { p: [{x:250,y:450,w:50}, {x:500,y:350,w:50}, {x:250,y:250,w:50}, {x:500,y:150,w:50}], e: [] }
+        { p: [{x:100,y:450,w:80}, {x:350,y:350,w:80}, {x:600,y:250,w:80}], c:[], e: [] },
+        { p: [{x:150,y:350,w:500}], c:[], e: [{pIdx: 0}] },
+        { p: [{x:50,y:250,w:100}, {x:350,y:450,w:100}, {x:650,y:250,w:100}], c:[], e: [] },
+        { p: [{x:200,y:480,w:60}, {x:400,y:380,w:60}, {x:200,y:280,w:60}, {x:400,y:180,w:60}], c:[], e: [] },
+        { p: [{x:350,y:450,w:100}, {x:200,y:300,w:100}, {x:500,y:300,w:100}, {x:350,y:150,w:100}], c:[], e: [{pIdx: 1}, {pIdx: 2}] },
+        { p: [{x:80,y:500,w:150}, {x:550,y:500,w:150}, {x:320,y:350,w:160}], c:[], e: [{pIdx: 2}] },
+        { p: [{x:100,y:400,w:200}, {x:500,y:400,w:200}, {x:350,y:200,w:100}], c:[], e: [{pIdx: 0}, {pIdx: 1}] },
+        { p: [{x:50,y:300,w:80}, {x:250,y:200,w:80}, {x:450,y:400,w:80}, {x:650,y:300,w:80}], c:[], e: [] },
+        { p: [{x:150,y:450,w:500}, {x:150,y:250,w:500}], c:[], e: [{pIdx: 0}, {pIdx: 1}] },
+        { p: [{x:350,y:500,w:100}, {x:350,y:350,w:100}, {x:350,y:200,w:100}], c:[], e: [] },
+        { p: [{x:100,y:250,w:150}, {x:350,y:450,w:100}, {x:550,y:250,w:150}], c:[], e: [{pIdx: 0}, {pIdx: 2}] },
+        { p: [{x:200,y:480,w:50}, {x:350,y:380,w:50}, {x:500,y:280,w:50}, {x:650,y:180,w:50}], c:[], e: [] },
+        { p: [{x:50,y:450,w:150}, {x:600,y:450,w:150}, {x:250,y:300,w:300}], c:[], e: [{pIdx: 2}] },
+        { p: [{x:300,y:480,w:200}, {x:100,y:330,w:100}, {x:600,y:330,w:100}, {x:300,y:180,w:200}], c:[], e: [{pIdx: 0}, {pIdx: 3}] },
+        { p: [{x:150,y:400,w:80}, {x:300,y:250,w:80}, {x:450,y:400,w:80}, {x:600,y:250,w:80}], c:[], e: [] },
+        { p: [{x:100,y:300,w:600}], c:[], e: [{pIdx: 0}, {pIdx: 0}] },
+        { p: [{x:100,y:500,w:100}, {x:600,y:500,w:100}, {x:100,y:200,w:100}, {x:600,y:200,w:100}, {x:350,y:350,w:100}], c:[], e: [{pIdx: 4}] },
+        { p: [{x:250,y:450,w:50}, {x:500,y:350,w:50}, {x:250,y:250,w:50}, {x:500,y:150,w:50}], c:[], e: [] }
     ];
 
     const iceLayouts = [
-        { p: [{x:150,y:450,w:120}, {x:350,y:350,w:120}, {x:550,y:250,w:120}], e: [] },
-        { p: [{x:200,y:400,w:400}], e: [{pIdx: 0}] },
-        { p: [{x:50,y:480,w:100}, {x:250,y:380,w:100}, {x:450,y:280,w:100}, {x:650,y:180,w:100}], e: [] },
-        { p: [{x:150,y:450,w:200}, {x:450,y:450,w:200}], e: [{pIdx:0}, {pIdx:1}] },
-        { p: [{x:350,y:450,w:100}, {x:350,y:300,w:100}, {x:350,y:150,w:100}], e: [] },
-        { p: [{x:100,y:500,w:150}, {x:550,y:500,w:150}, {x:325,y:350,w:150}], e: [{pIdx: 2}] },
-        { p: [{x:50,y:250,w:100}, {x:650,y:250,w:100}, {x:350,y:450,w:100}], e: [] },
-        { p: [{x:200,y:450,w:400}, {x:300,y:300,w:200}], e: [{pIdx: 0}] },
-        { p: [{x:100,y:350,w:80}, {x:250,y:250,w:80}, {x:400,y:350,w:80}, {x:550,y:250,w:80}], e: [] },
-        { p: [{x:100,y:500,w:150}, {x:550,y:500,w:150}, {x:325,y:250,w:150}], e: [{pIdx: 0}, {pIdx: 1}] },
-        { p: [{x:100,y:500,w:150}, {x:550,y:500,w:150}, {x:200,y:250,w:400}], e: [{pIdx: 0}, {pIdx: 2}] } 
+        { p: [{x:150,y:450,w:120}, {x:550,y:250,w:120}], c: [{x:350,y:350,w:120, speed: 2}], e: [] },
+        { p: [], c: [{x:200,y:400,w:400, speed: -2}], e: [{cIdx: 0}] },
+        { p: [{x:50,y:480,w:100}, {x:450,y:280,w:100}], c: [{x:250,y:380,w:100, speed: 1.5}, {x:650,y:180,w:100, speed: -1.5}], e: [] },
+        { p: [], c: [{x:150,y:450,w:200, speed: 2}, {x:450,y:450,w:200, speed: -2}], e: [{cIdx:0}, {cIdx:1}] },
+        { p: [{x:350,y:450,w:100}, {x:350,y:150,w:100}], c: [{x:350,y:300,w:100, speed: 3}], e: [] },
+        { p: [{x:100,y:500,w:150}, {x:550,y:500,w:150}], c: [{x:325,y:350,w:150, speed: -2.5}], e: [{cIdx: 0}] },
+        { p: [{x:50,y:250,w:100}, {x:650,y:250,w:100}], c: [{x:350,y:450,w:100, speed: 2}], e: [] },
+        { p: [{x:300,y:300,w:200}], c: [{x:200,y:450,w:400, speed: 3}], e: [{cIdx: 0}] },
+        { p: [{x:100,y:350,w:80}, {x:400,y:350,w:80}], c: [{x:250,y:250,w:80, speed: -1.5}, {x:550,y:250,w:80, speed: 1.5}], e: [] },
+        { p: [{x:100,y:500,w:150}, {x:550,y:500,w:150}], c: [{x:325,y:250,w:150, speed: 2}], e: [{pIdx: 0}, {pIdx: 1}] },
+        { p: [{x:100,y:500,w:150}, {x:550,y:500,w:150}], c: [{x:200,y:250,w:400, speed: -3}], e: [{pIdx: 0}, {cIdx: 0}] } 
     ];
 
     const levels = [];
@@ -241,7 +273,7 @@
         let lvl = {
             spawn: {x: 50, y: 400},
             plats: [ {x:0, y:580, w:800, h:20}, {x:0, y:0, w:20, h:600}, {x:780, y:0, w:20, h:600} ],
-            water: [], enemies: [], gems: [], hasHand: false, hasBoss: false, exit: {x: 700, y: 100}, isIce: false
+            water: [], conveyors: [], enemies: [], gems: [], hasHand: false, hasBoss: false, exit: {x: 700, y: 100}, isIce: false
         };
 
         if (i < 20) {
@@ -274,13 +306,27 @@
             let iceIndex = i - 20; 
             let layout = iceLayouts[iceIndex];
             layout.p.forEach(p => { lvl.plats.push({x: p.x, y: p.y, w: p.w, h: 20}); });
-            let p1 = layout.p[0]; let pLast = layout.p[layout.p.length-1];
-            lvl.gems.push({x: p1.x + p1.w/2 - 10, y: p1.y - 40});
-            lvl.gems.push({x: pLast.x + pLast.w/2 - 10, y: pLast.y - 40});
-            let highestP = layout.p.reduce((min, p) => p.y < min.y ? p : min, layout.p[0]);
-            lvl.exit = {x: highestP.x + highestP.w/2 - 20, y: highestP.y - 50};
+            layout.c.forEach(c => { lvl.conveyors.push({x: c.x, y: c.y, w: c.w, h: 20, speed: c.speed}); });
+            
+            let allSurfaces = [...layout.p, ...layout.c];
+            if(allSurfaces.length > 0) {
+                let p1 = allSurfaces[0]; let pLast = allSurfaces[allSurfaces.length-1];
+                lvl.gems.push({x: p1.x + p1.w/2 - 10, y: p1.y - 40});
+                lvl.gems.push({x: pLast.x + pLast.w/2 - 10, y: pLast.y - 40});
+                let highestP = allSurfaces.reduce((min, p) => p.y < min.y ? p : min, allSurfaces[0]);
+                lvl.exit = {x: highestP.x + highestP.w/2 - 20, y: highestP.y - 50};
+            }
+
             if(iceIndex > 1) lvl.water.push({x:20, y:550, w:760, h:50});
-            layout.e.forEach(eData => { let targetP = layout.p[eData.pIdx]; lvl.enemies.push({x: targetP.x + 10, y: targetP.y - 24, w: 24, h: 24, vx: 2.5, minX: targetP.x, maxX: targetP.x + targetP.w}); });
+            layout.e.forEach(eData => { 
+                let target;
+                if(eData.pIdx !== undefined) target = layout.p[eData.pIdx];
+                else if(eData.cIdx !== undefined) target = layout.c[eData.cIdx];
+
+                if(target) {
+                    lvl.enemies.push({x: target.x + 10, y: target.y - 24, w: 24, h: 24, vx: 2.5, minX: target.x, maxX: target.x + target.w, conveyorObj: eData.cIdx !== undefined ? target : null}); 
+                }
+            });
             if(iceIndex === 10) { lvl.hasHand = true; lvl.hasBoss = true; }
         }
         levels.push(lvl);
@@ -315,7 +361,8 @@
         const msg = document.getElementById('code-msg');
         if(input === 'justice duck') {
             unlockedLevels = TOTAL_LEVELS; gems += 1000; devModeUnlocked = true;
-            skins[skins.length - 1].unlocked = true; // Unlock secret duck
+            skins[skins.length - 1].unlocked = true; 
+            skins.find(s => s.name === "CHRONO").unlocked = true; 
             msg.innerText = "JUSTICE SERVED:\nALL FLOORS, 1000 GEMS, GOD MODE UNLOCKED!"; msg.style.color = "#a3ce27";
             setTimeout(() => { document.getElementById('dev-code').value = ''; msg.innerText = ''; goToLevelSelect(); }, 2500);
         } else {
@@ -330,6 +377,15 @@
         btn.innerText = "GOD MODE: " + (godModeOn ? "ON" : "OFF");
         btn.style.color = godModeOn ? "#a3ce27" : "#fff";
         btn.style.borderColor = godModeOn ? "#a3ce27" : "#577277";
+    }
+
+    function togglePause() {
+        isPaused = !isPaused;
+        if(isPaused) {
+            document.getElementById('pause-screen').classList.remove('hidden');
+        } else {
+            document.getElementById('pause-screen').classList.add('hidden');
+        }
     }
 
     function goToShop() {
@@ -364,8 +420,12 @@
                 btn.innerText = 'EQUIP'; btn.onclick = () => { currentSkin = idx; renderShop(); };
             } else if (skin.isSecret) {
                 btn.innerText = 'LOCKED'; btn.disabled = true;
-                title.innerText = skin.name + '\n(BEAT ALL LEVELS ON SUPERHARD MODE)';
-                title.style.fontSize = '6px'; title.style.lineHeight = '1.2'; title.style.textAlign = 'center'; title.style.color = '#be4a2f';
+                title.innerText = skin.name + '\n(BEAT SUPERHARD)';
+                title.style.fontSize = '7px'; title.style.lineHeight = '1.3'; title.style.textAlign = 'center'; title.style.color = '#be4a2f';
+            } else if (skin.isTimeTrial) {
+                btn.innerText = 'LOCKED'; btn.disabled = true;
+                title.innerText = skin.name + '\n(BEAT TIME TRIAL)';
+                title.style.fontSize = '7px'; title.style.lineHeight = '1.3'; title.style.textAlign = 'center'; title.style.color = '#00ffff';
             } else {
                 btn.innerText = '💎 ' + skin.price;
                 if(gems >= skin.price) {
@@ -377,6 +437,7 @@
     }
 
     window.addEventListener('keydown', e => {
+        if(isPaused) return; 
         if(['ArrowUp', 'KeyW'].includes(e.code)) { 
             if(!keys.up && (player.grounded || player.jumps < 2)) { 
                 player.vy = -12; player.jumps++; player.grounded = false; 
@@ -400,15 +461,111 @@
     let gemsThisRun = 0;
     function die() {
         spawnParticles(player.x+12, player.y+12, '#be4a2f', 30); 
-        gems -= gemsThisRun; 
-        startLevel(currentLevel);
+        
+        if (isArcadeMode) {
+            if (arcadeScore > arcadeHighScore) arcadeHighScore = Math.floor(arcadeScore);
+            document.getElementById('arcade-hs').innerText = arcadeHighScore;
+            
+            // Allow player to keep gems collected in arcade run
+            document.getElementById('gem-count').innerText = gems;
+            
+            goToMenu();
+            alert("ARCADE GAME OVER!\n\nScore: " + Math.floor(arcadeScore) + "\nGems Collected: " + gemsThisRun);
+        } else {
+            gems -= gemsThisRun; 
+            startLevel(currentLevel);
+        }
+    }
+
+    // --- ARCADE MODE FUNCTIONS ---
+
+    function startArcadeMode() {
+        isArcadeMode = true;
+        timeTrialOn = false;
+        arcadeScore = 0;
+        lastArcadePlatformY = 600;
+        gemsThisRun = 0;
+        
+        platforms = [{x: 0, y: 580, w: 800, h: 20}]; // Starting ground
+        conveyors = [];
+        enemies = [];
+        collectibles = [];
+        water = []; // No water in arcade mode (you fall instead)
+        particles = [];
+        
+        player.x = 400; player.y = 500; player.vx = 0; player.vy = 0; player.jumps = 0; player.dashTimer = 0;
+        
+        handObj.active = false;
+        beamKnife.active = false;
+
+        spawnArcadePlatforms();
+
+        state = 'PLAY'; 
+        isPaused = false;
+        document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+        document.getElementById('game-ui').classList.remove('hidden');
+        document.getElementById('hud-level').innerHTML = 'SCORE: <span id="lvl-display">0</span>';
+        
+        const godBtn = document.getElementById('god-btn');
+        if(devModeUnlocked) godBtn.classList.remove('hidden');
+        else godBtn.classList.add('hidden');
+    }
+
+    function spawnArcadePlatforms() {
+        // Spawn chunks of platforms until we have covered the screen above the player
+        while(lastArcadePlatformY > -200) {
+            lastArcadePlatformY -= (Math.random() * 60 + 80); // Jumpable distance
+            let w = Math.random() * 100 + 70;
+            let x = Math.random() * (800 - w);
+            
+            let isConveyor = Math.random() < 0.25; // 25% chance of conveyor
+            
+            if (isConveyor) {
+                let speed = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 2 + 1);
+                let c = {x, y: lastArcadePlatformY, w, h: 20, speed};
+                conveyors.push(c);
+                
+                // Add an enemy maybe?
+                if (Math.random() < 0.4) {
+                    enemies.push({x: x+10, y: lastArcadePlatformY-24, w: 24, h: 24, vx: 2, minX: x, maxX: x+w, conveyorObj: c});
+                }
+            } else {
+                platforms.push({x, y: lastArcadePlatformY, w, h: 20});
+                
+                if (Math.random() < 0.3) {
+                    enemies.push({x: x+10, y: lastArcadePlatformY-24, w: 24, h: 24, vx: 2, minX: x, maxX: x+w, conveyorObj: null});
+                }
+            }
+            
+            // Spawn Gem
+            if (Math.random() < 0.4) {
+                collectibles.push({x: x + w/2 - 10, y: lastArcadePlatformY - 40, collected: false});
+            }
+        }
+    }
+
+    // ----------------------------
+
+    function showTimeTrialMenu() {
+        document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+        document.getElementById('tt-menu-screen').classList.remove('hidden');
+    }
+
+    function startTimeTrial() {
+        timeTrialOn = true;
+        isArcadeMode = false;
+        timeTrialFrames = TIME_TRIAL_LIMIT; 
+        document.getElementById('timer-display').classList.remove('hidden');
+        startLevel(0);
     }
 
     function startLevel(idx) {
         currentLevel = idx; const d = levels[idx];
+        isArcadeMode = false;
         gemsThisRun = 0; document.getElementById('gem-count').innerText = gems;
 
         platforms = d.plats.map(p => ({...p})); water = d.water.map(w => ({...w})); 
+        conveyors = d.conveyors ? d.conveyors.map(c => ({...c})) : [];
         enemies = d.enemies.map(e => ({...e})); collectibles = d.gems.map(g => ({...g, collected: false})); 
         exit = {...d.exit, w:40, h:50}; particles = [];
         
@@ -418,9 +575,11 @@
         beamKnife = {x: 800, y: 250, w: 250, h: 16, vx: d.isIce ? -11 : -9, active: d.hasBoss}; 
 
         state = 'PLAY'; 
+        isPaused = false;
         document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
         document.getElementById('game-ui').classList.remove('hidden');
         
+        document.getElementById('hud-level').innerHTML = 'FLOOR <span id="lvl-display"></span>';
         document.getElementById('lvl-display').innerText = (currentLevel + 1);
         
         const godBtn = document.getElementById('god-btn');
@@ -429,8 +588,25 @@
     }
 
     function update() {
-        if(state !== 'PLAY') return;
-        const d = levels[currentLevel];
+        if(state !== 'PLAY' || isPaused) return;
+
+        if(timeTrialOn && !godModeOn) {
+            timeTrialFrames--;
+            if(timeTrialFrames <= 0) {
+                timeTrialFrames = 0;
+                goToMenu(); 
+                alert("OUT OF TIME! Better luck next run.");
+            }
+            let totalSec = timeTrialFrames / 60;
+            let m = Math.floor(totalSec / 60);
+            let s = Math.floor(totalSec % 60);
+            let ms = Math.floor((totalSec % 1) * 100);
+            let timerEl = document.getElementById('timer-display');
+            timerEl.innerText = `⏳ ${m}:${s.toString().padStart(2,'0')}.${ms.toString().padStart(2,'0')}`;
+            if (timeTrialFrames < 1800 && Math.floor(timeTrialFrames / 15) % 2 === 0) timerEl.style.color = '#fff'; else timerEl.style.color = '#be4a2f';
+        }
+
+        const d = isArcadeMode ? { isIce: Math.floor(arcadeScore / 1500) % 2 !== 0 } : levels[currentLevel];
         let speedMult = superHardOn ? 1.75 : 1; 
 
         if(player.dashTimer > 0) player.dashTimer--;
@@ -444,22 +620,89 @@
                 else if(keys.right) { player.vx = 5; player.facing = 1; }
                 else player.vx *= 0.8;
             }
-            player.vy += 0.6;
+            player.vy += 0.6; // Gravity
         }
 
         player.x += player.vx; resolveCollisions('x');
+        
+        // Screen Wrap for Arcade Mode!
+        if (isArcadeMode) {
+            if (player.x < -player.w) player.x = 800;
+            else if (player.x > 800) player.x = -player.w;
+        }
+
         player.y += player.vy; resolveCollisions('y');
+
+        // --- ARCADE MODE SCROLLING CAMERA ---
+        if (isArcadeMode) {
+            if (player.y < 300) {
+                let diff = 300 - player.y;
+                player.y = 300;
+                arcadeScore += diff;
+                
+                platforms.forEach(p => p.y += diff);
+                conveyors.forEach(c => c.y += diff);
+                enemies.forEach(e => e.y += diff);
+                collectibles.forEach(g => g.y += diff);
+                
+                lastArcadePlatformY += diff;
+            }
+            
+            // Delete things that fall off screen
+            platforms = platforms.filter(p => p.y < 650);
+            conveyors = conveyors.filter(c => c.y < 650);
+            enemies = enemies.filter(e => e.y < 650);
+            collectibles = collectibles.filter(g => g.y < 650 && !g.collected);
+            
+            // Spawn more above if needed
+            if (lastArcadePlatformY > 0) {
+                spawnArcadePlatforms();
+            }
+
+            document.getElementById('lvl-display').innerText = Math.floor(arcadeScore);
+        }
+        // ------------------------------------
 
         if(!godModeOn) {
             if(player.y > 600) die();
-            water.forEach(w => { if(rectIntersect(player.x, player.y, player.w, player.h, w.x, w.y+10, w.w, w.h-10)) die(); });
+            if (!isArcadeMode) {
+                water.forEach(w => { if(rectIntersect(player.x, player.y, player.w, player.h, w.x, w.y+10, w.w, w.h-10)) die(); });
+            }
+            
             enemies.forEach(e => {
-                e.x += e.vx * speedMult; if(e.x < e.minX || e.x > e.maxX - e.w) e.vx *= -1;
+                let eSpeed = e.vx * speedMult;
+                if (e.conveyorObj) {
+                    eSpeed += e.conveyorObj.speed; 
+                }
+                e.x += eSpeed; 
+                
+                if(e.x < e.minX) { 
+                    e.x = e.minX; 
+                    e.vx = Math.abs(e.vx); 
+                } else if(e.x > e.maxX - e.w) { 
+                    e.x = e.maxX - e.w; 
+                    e.vx = -Math.abs(e.vx); 
+                }
+
                 if(rectIntersect(player.x, player.y, player.w, player.h, e.x+2, e.y+2, e.w-4, e.h-4)) die();
             });
+            
         } else {
             if(player.y > 600) { player.y = 0; player.vy = 0; }
-            enemies.forEach(e => { e.x += e.vx * speedMult; if(e.x < e.minX || e.x > e.maxX - e.w) e.vx *= -1; });
+            
+            enemies.forEach(e => { 
+                let eSpeed = e.vx * speedMult;
+                if (e.conveyorObj) eSpeed += e.conveyorObj.speed;
+                e.x += eSpeed; 
+                
+                if(e.x < e.minX) { 
+                    e.x = e.minX; 
+                    e.vx = Math.abs(e.vx); 
+                } else if(e.x > e.maxX - e.w) { 
+                    e.x = e.maxX - e.w; 
+                    e.vx = -Math.abs(e.vx); 
+                }
+            });
         }
 
         collectibles.forEach(g => { 
@@ -469,42 +712,37 @@
             }
         });
 
-        if(collectibles.every(g => g.collected) && rectIntersect(player.x, player.y, player.w, player.h, exit.x, exit.y, exit.w, exit.h)) {
-            // Track Superhard wins
+        // Door logic only matters if NOT in arcade mode
+        if(!isArcadeMode && collectibles.every(g => g.collected) && rectIntersect(player.x, player.y, player.w, player.h, exit.x, exit.y, exit.w, exit.h)) {
             if(superHardOn && !superHardWins.includes(currentLevel)) {
                 superHardWins.push(currentLevel);
-                if(superHardWins.length === TOTAL_LEVELS) skins[skins.length - 1].unlocked = true; // Unlock Void Demon
+                if(superHardWins.length === TOTAL_LEVELS) skins[skins.length - 1].unlocked = true; 
             }
 
             if(currentLevel === 19) {
                 if(unlockedLevels <= 20) unlockedLevels = 21; 
                 playFakeEndingSequence();
             } 
-            else if(currentLevel === TOTAL_LEVELS - 1) { playRealEndingSequence(); } 
+            else if(currentLevel === TOTAL_LEVELS - 1) { 
+                if(timeTrialOn) {
+                    skins.find(s => s.name === "CHRONO").unlocked = true; 
+                }
+                playRealEndingSequence(); 
+            } 
             else {
                 state = 'WIN'; if(currentLevel + 1 >= unlockedLevels) unlockedLevels++;
                 document.getElementById('win-screen').classList.remove('hidden');
             }
         }
 
-        if(handObj.active) {
-            let waitLimit = superHardOn ? 60 : 120;
-            let warnLimit = superHardOn ? 20 : 40;
-            let smashLimit = superHardOn ? 15 : 30;
-
-            if(handObj.state === 'waiting') {
-                handObj.timer++;
-                if(handObj.timer > waitLimit) { handObj.x = player.x - 20; handObj.state = 'warning'; handObj.timer = 0; }
-            } else if (handObj.state === 'warning') {
-                handObj.timer++; if(handObj.timer > warnLimit) { handObj.state = 'smash'; handObj.y = 0; handObj.timer = 0; spawnParticles(handObj.x+30, 580, '#fff', 20);}
-            } else if (handObj.state === 'smash') {
-                handObj.timer++;
-                if(!godModeOn && rectIntersect(player.x, player.y, player.w, player.h, handObj.x+10, handObj.y, 60, 600)) die();
-                if(handObj.timer > smashLimit) { handObj.state = 'waiting'; handObj.y = -600; handObj.timer = 0; }
-            }
+        if(handObj.active && !isArcadeMode) {
+            let waitLimit = superHardOn ? 60 : 120; let warnLimit = superHardOn ? 20 : 40; let smashLimit = superHardOn ? 15 : 30;
+            if(handObj.state === 'waiting') { handObj.timer++; if(handObj.timer > waitLimit) { handObj.x = player.x - 20; handObj.state = 'warning'; handObj.timer = 0; } } 
+            else if (handObj.state === 'warning') { handObj.timer++; if(handObj.timer > warnLimit) { handObj.state = 'smash'; handObj.y = 0; handObj.timer = 0; spawnParticles(handObj.x+30, 580, '#fff', 20);} } 
+            else if (handObj.state === 'smash') { handObj.timer++; if(!godModeOn && rectIntersect(player.x, player.y, player.w, player.h, handObj.x+10, handObj.y, 60, 600)) die(); if(handObj.timer > smashLimit) { handObj.state = 'waiting'; handObj.y = -600; handObj.timer = 0; } }
         }
 
-        if(beamKnife.active) {
+        if(beamKnife.active && !isArcadeMode) {
             beamKnife.x += (beamKnife.vx * speedMult);
             if(beamKnife.x < -300 || beamKnife.x > 1000) { beamKnife.vx *= -1; beamKnife.y = Math.random() * 350 + 100; }
             if(!godModeOn && rectIntersect(player.x, player.y, player.w, player.h, beamKnife.x, beamKnife.y, beamKnife.w, beamKnife.h)) die();
@@ -515,12 +753,18 @@
 
     function resolveCollisions(axis) {
         if(axis === 'y') player.grounded = false;
-        platforms.forEach(p => {
+        const allSurfaces = [...platforms, ...conveyors];
+
+        allSurfaces.forEach(p => {
             if(rectIntersect(player.x, player.y, player.w, player.h, p.x, p.y, p.w, p.h)) {
                 if(axis === 'x') { player.x = player.vx > 0 ? p.x - player.w : p.x + p.w; player.vx = 0; } 
                 else { 
-                    if(player.vy > 0) { player.y = p.y - player.h; player.grounded = true; player.jumps = 0; }
-                    else { player.y = p.y + p.h; }
+                    if(player.vy > 0) { 
+                        player.y = p.y - player.h; 
+                        player.grounded = true; 
+                        player.jumps = 0; 
+                        if (p.speed) player.x += p.speed;
+                    } else { player.y = p.y + p.h; }
                     player.vy = 0;
                 }
             }
@@ -579,7 +823,8 @@
     function drawParticles() { particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life/30; ctx.fillRect(p.x, p.y, 4, 4); }); ctx.globalAlpha = 1.0; }
 
     function draw() {
-        const d = levels[currentLevel] || levels[0];
+        // Theme changes dynamically in arcade based on score
+        const d = isArcadeMode ? { isIce: Math.floor(arcadeScore / 1500) % 2 !== 0 } : (levels[currentLevel] || levels[0]);
         
         if(d.isIce) {
             ctx.fillStyle = '#101622'; ctx.fillRect(0,0,800,600);
@@ -590,40 +835,55 @@
         }
 
         ctx.lineWidth = 2; ctx.beginPath();
-        for(let i=0; i<800; i+=50) { ctx.moveTo(i,0); ctx.lineTo(i,600); }
-        for(let i=0; i<600; i+=25) { ctx.moveTo(0,i); ctx.lineTo(800,i); }
+        
+        // In arcade mode, make the background grid scroll too for an awesome effect!
+        let yOffset = isArcadeMode ? (arcadeScore % 25) : 0;
+        
+        for(let i=0; i<=800; i+=50) { ctx.moveTo(i,0); ctx.lineTo(i,600); }
+        for(let i=0; i<=625; i+=25) { ctx.moveTo(0, i + yOffset); ctx.lineTo(800, i + yOffset); }
         ctx.stroke();
 
         if(state === 'PLAY' || state === 'WIN') {
-            ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.font = '150px "Press Start 2P"'; ctx.textAlign = 'center'; 
-            ctx.fillText(currentLevel + 1, 400, 350);
-
-            if(currentLevel === 0) {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.font = '14px "Press Start 2P"'; ctx.textAlign = 'center';
-                ctx.fillText("WASD / ARROWS = MOVE & JUMP", 400, 150);
-                ctx.fillText("SPACEBAR = DASH", 400, 200);
-            }
-            if(currentLevel === 20) { 
-                ctx.fillStyle = 'rgba(168, 216, 234, 0.4)'; ctx.font = '14px "Press Start 2P"'; ctx.textAlign = 'center';
-                ctx.fillText("WELCOME TO THE FREEZER.", 400, 150);
-                ctx.fillText("WATCH YOUR STEP. IT'S SLIPPERY.", 400, 200);
-            }
-
-            water.forEach(w => { 
-                if(d.isIce) {
-                    ctx.fillStyle = '#2a5a9e'; ctx.fillRect(w.x, w.y, w.w, w.h); 
-                    ctx.fillStyle = '#4a90e2'; ctx.fillRect(w.x, w.y, w.w, 10); 
-                    if(Math.random() < 0.1) spawnParticles(w.x + Math.random()*w.w, w.y, '#ffffff', 1);
-                } else {
-                    ctx.fillStyle = '#be4a2f'; ctx.fillRect(w.x, w.y, w.w, w.h); 
-                    ctx.fillStyle = '#ff4500'; ctx.fillRect(w.x, w.y, w.w, 10); 
-                    if(Math.random() < 0.1) spawnParticles(w.x + Math.random()*w.w, w.y, '#ff4500', 1);
-                }
-            });
             
-            ctx.fillStyle = '#111'; ctx.fillRect(exit.x, exit.y, exit.w, exit.h);
-            ctx.strokeStyle = d.isIce ? '#4a90e2' : '#577277'; ctx.lineWidth = 2; ctx.strokeRect(exit.x, exit.y, exit.w, exit.h);
-            if(collectibles.every(g=>g.collected)) { ctx.fillStyle = '#d77bba'; ctx.globalAlpha = 0.4; ctx.fillRect(exit.x, exit.y, exit.w, exit.h); ctx.globalAlpha = 1; }
+            if(!isArcadeMode) {
+                ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.font = '150px "Press Start 2P"'; ctx.textAlign = 'center'; 
+                ctx.fillText(currentLevel + 1, 400, 350);
+
+                if(currentLevel === 0) {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.font = '14px "Press Start 2P"'; ctx.textAlign = 'center';
+                    ctx.fillText("WASD / ARROWS = MOVE & JUMP", 400, 150);
+                    ctx.fillText("SPACEBAR = DASH", 400, 200);
+                }
+                if(currentLevel === 20) { 
+                    ctx.fillStyle = 'rgba(168, 216, 234, 0.4)'; ctx.font = '14px "Press Start 2P"'; ctx.textAlign = 'center';
+                    ctx.fillText("WELCOME TO THE FREEZER.", 400, 150);
+                    ctx.fillText("WATCH YOUR STEP. IT'S SLIPPERY.", 400, 200);
+                }
+            } else {
+                if (arcadeScore < 500) {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'; ctx.font = '14px "Press Start 2P"'; ctx.textAlign = 'center';
+                    ctx.fillText("WALK OFF THE EDGE", 400, 200);
+                    ctx.fillText("TO WARP TO THE OTHER SIDE!", 400, 250);
+                }
+            }
+
+            if(!isArcadeMode) {
+                water.forEach(w => { 
+                    if(d.isIce) {
+                        ctx.fillStyle = '#2a5a9e'; ctx.fillRect(w.x, w.y, w.w, w.h); 
+                        ctx.fillStyle = '#4a90e2'; ctx.fillRect(w.x, w.y, w.w, 10); 
+                        if(Math.random() < 0.1) spawnParticles(w.x + Math.random()*w.w, w.y, '#ffffff', 1);
+                    } else {
+                        ctx.fillStyle = '#be4a2f'; ctx.fillRect(w.x, w.y, w.w, w.h); 
+                        ctx.fillStyle = '#ff4500'; ctx.fillRect(w.x, w.y, w.w, 10); 
+                        if(Math.random() < 0.1) spawnParticles(w.x + Math.random()*w.w, w.y, '#ff4500', 1);
+                    }
+                });
+                
+                ctx.fillStyle = '#111'; ctx.fillRect(exit.x, exit.y, exit.w, exit.h);
+                ctx.strokeStyle = d.isIce ? '#4a90e2' : '#577277'; ctx.lineWidth = 2; ctx.strokeRect(exit.x, exit.y, exit.w, exit.h);
+                if(collectibles.every(g=>g.collected)) { ctx.fillStyle = '#d77bba'; ctx.globalAlpha = 0.4; ctx.fillRect(exit.x, exit.y, exit.w, exit.h); ctx.globalAlpha = 1; }
+            }
 
             platforms.forEach(p => { 
                 if(d.isIce) {
@@ -637,6 +897,25 @@
                 }
             });
             
+            conveyors.forEach(c => {
+                ctx.fillStyle = '#0055ff'; ctx.fillRect(c.x, c.y, c.w, c.h); 
+                ctx.fillStyle = '#00ccff'; ctx.fillRect(c.x, c.y, c.w, 4);
+                ctx.strokeStyle = '#101622'; ctx.strokeRect(c.x, c.y, c.w, c.h);
+                
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                let offset = (Date.now() / 20 * Math.abs(c.speed)) % 20;
+                let dir = c.speed > 0 ? 1 : -1;
+                for(let i=0; i < c.w; i+=20) {
+                    let arrowX = c.x + i + (dir * offset);
+                    if(arrowX > c.x && arrowX < c.x + c.w - 10) {
+                        ctx.beginPath();
+                        if (c.speed > 0) { ctx.moveTo(arrowX, c.y + 6); ctx.lineTo(arrowX + 8, c.y + 10); ctx.lineTo(arrowX, c.y + 14); } 
+                        else { ctx.moveTo(arrowX + 8, c.y + 6); ctx.lineTo(arrowX, c.y + 10); ctx.lineTo(arrowX + 8, c.y + 14); }
+                        ctx.fill();
+                    }
+                }
+            });
+
             enemies.forEach(e => {
                 if(d.isIce) drawIcePack(e.x, e.y, e.w, e.h, e.vx);
                 else drawRamen(e.x, e.y, e.w, e.h, e.vx);
@@ -648,12 +927,12 @@
             
             drawDuckContext(ctx, player.x, player.y, player.facing, skins[currentSkin]);
 
-            if(handObj.active) {
+            if(handObj.active && !isArcadeMode) {
                 if(handObj.state === 'warning') { ctx.fillStyle = 'rgba(255, 0, 0, 0.3)'; ctx.fillRect(handObj.x, 0, 80, 600); } 
                 else if (handObj.state === 'smash') { ctx.fillStyle = '#e5c29f'; ctx.fillRect(handObj.x+10, handObj.y, 60, 600); ctx.fillStyle = '#fff'; ctx.fillRect(handObj.x, handObj.y, 80, 500); }
             }
 
-            if(beamKnife.active) {
+            if(beamKnife.active && !isArcadeMode) {
                 let knifeColor = d.isIce ? "#ff00ff" : "#00ffff"; 
                 if(superHardOn) { ctx.shadowBlur = 30; ctx.shadowColor = "#ff0000"; knifeColor = "#ff0000"; }
                 else { ctx.shadowBlur = 20; ctx.shadowColor = knifeColor; }
@@ -679,10 +958,8 @@
         document.getElementById('game-ui').classList.add('hidden');
         document.getElementById('fake-ending-screen').classList.remove('hidden');
         
-        document.getElementById('fe-1').style.opacity = '0';
-        document.getElementById('fe-2').style.opacity = '0';
-        document.getElementById('fe-3').classList.add('hidden');
-        document.getElementById('fe-btn').classList.add('hidden');
+        document.getElementById('fe-1').style.opacity = '0'; document.getElementById('fe-2').style.opacity = '0';
+        document.getElementById('fe-3').classList.add('hidden'); document.getElementById('fe-btn').classList.add('hidden');
 
         setTimeout(() => document.getElementById('fe-1').style.opacity = '1', 1000);
         setTimeout(() => document.getElementById('fe-2').style.opacity = '1', 3000);
@@ -690,10 +967,7 @@
         setTimeout(() => {
             document.getElementById('fe-1').style.opacity = '0'; document.getElementById('fe-2').style.opacity = '0';
             document.getElementById('scanlines').style.opacity = '1'; 
-            setTimeout(() => {
-                document.getElementById('fe-3').classList.remove('hidden'); document.getElementById('fe-btn').classList.remove('hidden');
-                if(!scanlinesOn) document.getElementById('scanlines').style.opacity = '0';
-            }, 800);
+            setTimeout(() => { document.getElementById('fe-3').classList.remove('hidden'); document.getElementById('fe-btn').classList.remove('hidden'); if(!scanlinesOn) document.getElementById('scanlines').style.opacity = '0'; }, 800);
         }, 6000);
     }
 
@@ -710,25 +984,35 @@
         eCtx.clearRect(0, 0, 48, 48); eCtx.save(); eCtx.scale(2, 2); drawDuckContext(eCtx, 0, 4, 1, skins[currentSkin]); eCtx.restore();
 
         setTimeout(() => document.getElementById('re-1').style.opacity = '1', 1000);
-        setTimeout(() => document.getElementById('re-2').style.opacity = '1', 3000);
+        setTimeout(() => { document.getElementById('re-2').innerText = timeTrialOn ? "THE DUCK IS A CHRONO MASTER." : "THE DUCK IS TRULY FREE."; document.getElementById('re-2').style.opacity = '1'; }, 3000);
         setTimeout(() => document.getElementById('re-3').style.opacity = '1', 5000);
         setTimeout(() => document.getElementById('re-btn').style.opacity = '1', 7000);
     }
 
     function resetFromEnding() { goToMenu(); }
 
-    function goToMenu() { state = 'MENU'; document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden')); document.getElementById('menu-screen').classList.remove('hidden'); document.getElementById('game-ui').classList.add('hidden'); }
+    function goToMenu() { 
+        state = 'MENU'; 
+        isPaused = false;
+        timeTrialOn = false; 
+        document.getElementById('timer-display').classList.add('hidden');
+        document.getElementById('pause-screen').classList.add('hidden');
+        document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden')); 
+        document.getElementById('menu-screen').classList.remove('hidden'); 
+        document.getElementById('game-ui').classList.add('hidden'); 
+    }
+    
     function goToSettings() { document.getElementById('menu-screen').classList.add('hidden'); document.getElementById('settings-screen').classList.remove('hidden'); }
     function goToCredits() { document.getElementById('menu-screen').classList.add('hidden'); document.getElementById('credits-screen').classList.remove('hidden'); }
     
     function goToLevelSelect() {
+        timeTrialOn = false; isArcadeMode = false;
+        document.getElementById('timer-display').classList.add('hidden');
         document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
         document.getElementById('level-screen').classList.remove('hidden');
         const grid = document.getElementById('level-grid'); grid.innerHTML = '';
         for(let i=0; i<TOTAL_LEVELS; i++) {
-            // HIDE LEVELS 21-31 UNLESS UNLOCKED
             if (i >= 20 && unlockedLevels <= 20) continue; 
-
             let btnClass = 'lvl-btn';
             if (i >= unlockedLevels) btnClass += ' locked';
             if (i >= 20) btnClass += ' ice'; 
